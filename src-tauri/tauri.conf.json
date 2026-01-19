@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MSI Fan Control",
+  "productName": "msi-fan-control",
   "version": "0.1.0",
   "identifier": "com.msi.fancontrol.dev",
   "build": {

@@ -49,11 +49,11 @@ fn get_sidecar_path() -> String {
         // Production: bundled next to executable
         exe_dir.join("msi-sidecar-x86_64-unknown-linux-gnu"),
         exe_dir.join("msi-sidecar"),
-        // Development: in target/debug or target/release
+        // Development: in target/debug or target/release - allow standard cargo structures
         exe_dir.join("../../binaries/msi-sidecar/target/release/msi-sidecar"),
         exe_dir.join("../binaries/msi-sidecar/target/release/msi-sidecar"),
-        // Absolute path for dev (from project root)
-        std::path::PathBuf::from("/home/tony/projects/msi-fan-control/src-tauri/binaries/msi-sidecar/target/release/msi-sidecar"),
+        exe_dir.join("../../binaries/msi-sidecar/target/debug/msi-sidecar"),
+        exe_dir.join("../binaries/msi-sidecar/target/debug/msi-sidecar"),
     ];
 
     for path in &possible_paths {
@@ -104,7 +104,7 @@ async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, Stri
     }
 
     let sidecar_path = get_sidecar_path();
-    eprintln!("Starting sidecar from: {}", sidecar_path);
+    // eprintln!("Starting sidecar from: {}", sidecar_path);
 
     // Spawn with pkexec for privilege escalation
     let mut child = Command::new("pkexec")
