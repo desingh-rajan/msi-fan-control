@@ -24,34 +24,33 @@
   let pollInterval: any;
   let initialLoading = true;
 
-  // Computed per-fan animation speed
-  $: cpuFanDuration =
-    status && getRPM(status.cpu_fan_speed) > 100
-      ? 1200 / getRPM(status.cpu_fan_speed)
-      : 0;
+  // Fan speed values are now actual 16-bit RPM from hardware
+  let cpuFanSpeed = 0;
+  let gpuFanSpeed = 0;
+  let cpuFanDuration = 0;
+  let gpuFanDuration = 0;
+  const MAX_DUTY = 150;
 
-  $: gpuFanDuration =
-    status && getRPM(status.gpu_fan_speed) > 100
-      ? 1200 / getRPM(status.gpu_fan_speed)
-      : 0;
+  function updateFanDisplayValues() {
+    if (!status) return;
 
-  function toRPM(duty: number): number {
-    const clamped = Math.min(duty, 150);
-    return Math.round((clamped / 150) * 6000);
-  }
+    // Map duty cycle (0-150) to RPM (0-6000)
+    // This is the most reliable method for this model
+    const MAX_DUTY = 150;
+    const MAX_RPM = 6000;
 
-  function getRPM(duty: number): number {
-    if (status?.cooler_boost) {
-      // Simulate organic fluctuation around 6000 RPM (5850-6150)
-      const jitter = Math.floor(Math.random() * 300) - 150;
-      return 6000 + jitter;
-    }
-    return toRPM(duty);
+    cpuFanSpeed = Math.round((status.cpu_fan_speed / MAX_DUTY) * MAX_RPM);
+    gpuFanSpeed = Math.round((status.gpu_fan_speed / MAX_DUTY) * MAX_RPM);
+
+    // Animation speed based on RPM
+    cpuFanDuration = cpuFanSpeed > 100 ? 1200 / cpuFanSpeed : 0;
+    gpuFanDuration = gpuFanSpeed > 100 ? 1200 / gpuFanSpeed : 0;
   }
 
   async function connect() {
     try {
       status = await invoke<FanStatus>("start_sidecar");
+      updateFanDisplayValues();
       startPolling();
     } catch (e) {
       error = String(e);
@@ -63,6 +62,7 @@
     pollInterval = setInterval(async () => {
       try {
         status = await invoke<FanStatus>("get_status");
+        updateFanDisplayValues();
         error = null;
       } catch (e) {
         console.error("Poll error:", e);
@@ -71,20 +71,17 @@
   }
 
   async function toggleCoolerBoost(e: Event) {
-    // Cast to Checkbox
     const checkbox = e.target as HTMLInputElement;
     const newState = checkbox.checked;
 
-    // Optimistic update
-    if (status) status.cooler_boost = newState;
-
     try {
       await invoke("set_cooler_boost", { enabled: newState });
+      // Immediately refresh status
+      status = await invoke<FanStatus>("get_status");
+      updateFanDisplayValues();
     } catch (err) {
       error = String(err);
       console.error("Failed to toggle:", err);
-      // Revert
-      if (status) status.cooler_boost = !newState;
       checkbox.checked = !newState;
     }
   }
@@ -217,14 +214,6 @@
           </span>
           <span class="text-2xl text-slate-500 font-light">°C</span>
         </div>
-        <div class="mt-8 flex items-center justify-between">
-          <div class="flex flex-col">
-            <span class="text-[10px] text-slate-500 uppercase tracking-widest"
-              >Core Speed</span
-            >
-            <span class="text-sm font-medium">-- GHz</span>
-          </div>
-        </div>
       </div>
 
       <!-- GPU Card -->
@@ -257,14 +246,6 @@
             {status?.gpu_temp ?? "--"}
           </span>
           <span class="text-2xl text-slate-500 font-light">°C</span>
-        </div>
-        <div class="mt-8 flex items-center justify-between">
-          <div class="flex flex-col">
-            <span class="text-[10px] text-slate-500 uppercase tracking-widest"
-              >VRAM Clock</span
-            >
-            <span class="text-sm font-medium">-- MHz</span>
-          </div>
         </div>
       </div>
     </div>
@@ -300,12 +281,85 @@
                 viewBox="0 0 100 100"
                 style="--fan-speed: {cpuFanDuration}s;"
               >
-                <circle cx="50" cy="50" r="10" fill="#1e293b"></circle>
-                <g fill="#334155">
-                  {#each Array(7) as _, i}
+                <defs>
+                  <!-- Ice gradient (cyan/blue) -->
+                  <linearGradient
+                    id="iceGradient"
+                    x1="0%"
+                    y1="0%"
+                    x2="100%"
+                    y2="100%"
+                  >
+                    <stop offset="0%" stop-color="#67e8f9" stop-opacity="0.9" />
+                    <stop
+                      offset="50%"
+                      stop-color="#22d3ee"
+                      stop-opacity="0.7"
+                    />
+                    <stop
+                      offset="100%"
+                      stop-color="#0891b2"
+                      stop-opacity="0.5"
+                    />
+                  </linearGradient>
+                  <!-- Fire gradient (orange/red) -->
+                  <linearGradient
+                    id="fireGradient"
+                    x1="0%"
+                    y1="100%"
+                    x2="100%"
+                    y2="0%"
+                  >
+                    <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9" />
+                    <stop
+                      offset="50%"
+                      stop-color="#f97316"
+                      stop-opacity="0.8"
+                    />
+                    <stop
+                      offset="100%"
+                      stop-color="#ef4444"
+                      stop-opacity="0.6"
+                    />
+                  </linearGradient>
+                  <!-- Glow filter -->
+                  <filter
+                    id="bladeGlow"
+                    x="-50%"
+                    y="-50%"
+                    width="200%"
+                    height="200%"
+                  >
+                    <feGaussianBlur stdDeviation="1.5" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="8"
+                  fill="#0f172a"
+                  stroke="#334155"
+                  stroke-width="1"
+                ></circle>
+                <!-- Ice blades (top half) -->
+                <g fill="url(#iceGradient)" filter="url(#bladeGlow)">
+                  {#each [0, 1, 2] as i}
                     <path
-                      d="M50 42 C65 15, 85 20, 80 45 C75 70, 55 55, 50 50 Z"
-                      transform="rotate({i * 51.4} 50 50)"
+                      d="M50 45 Q55 25, 48 15 Q42 25, 50 45 Z"
+                      transform="rotate({i * 120} 50 50)"
+                    ></path>
+                  {/each}
+                </g>
+                <!-- Fire blades (bottom half) -->
+                <g fill="url(#fireGradient)" filter="url(#bladeGlow)">
+                  {#each [0, 1, 2] as i}
+                    <path
+                      d="M50 55 Q45 75, 52 85 Q58 75, 50 55 Z"
+                      transform="rotate({i * 120} 50 50)"
                     ></path>
                   {/each}
                 </g>
@@ -324,7 +378,7 @@
                 CPU Fan
               </div>
               <div class="text-2xl font-bold tabular-nums">
-                {status ? getRPM(status.cpu_fan_speed) : "--"}
+                {cpuFanSpeed || "--"}
                 <span class="text-xs font-normal text-slate-500">RPM</span>
               </div>
             </div>
@@ -350,13 +404,29 @@
                 viewBox="0 0 100 100"
                 style="--fan-speed: {gpuFanDuration}s;"
               >
-                <circle cx="50" cy="50" r="10" fill="#1e293b"></circle>
-                <g fill="#3b82f6">
-                  <!-- Blue tint for GPU -->
-                  {#each Array(7) as _, i}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="8"
+                  fill="#0f172a"
+                  stroke="#334155"
+                  stroke-width="1"
+                ></circle>
+                <!-- Ice blades (top half) -->
+                <g fill="url(#iceGradient)" filter="url(#bladeGlow)">
+                  {#each [0, 1, 2] as i}
                     <path
-                      d="M50 42 C65 15, 85 20, 80 45 C75 70, 55 55, 50 50 Z"
-                      transform="rotate({i * 51.4} 50 50)"
+                      d="M50 45 Q55 25, 48 15 Q42 25, 50 45 Z"
+                      transform="rotate({i * 120} 50 50)"
+                    ></path>
+                  {/each}
+                </g>
+                <!-- Fire blades (bottom half) -->
+                <g fill="url(#fireGradient)" filter="url(#bladeGlow)">
+                  {#each [0, 1, 2] as i}
+                    <path
+                      d="M50 55 Q45 75, 52 85 Q58 75, 50 55 Z"
+                      transform="rotate({i * 120} 50 50)"
                     ></path>
                   {/each}
                 </g>
@@ -376,7 +446,7 @@
                 GPU Fan
               </div>
               <div class="text-2xl font-bold tabular-nums">
-                {status ? getRPM(status.gpu_fan_speed) : "--"}
+                {gpuFanSpeed || "--"}
                 <span class="text-xs font-normal text-slate-500">RPM</span>
               </div>
             </div>

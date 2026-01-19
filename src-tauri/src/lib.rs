@@ -14,8 +14,8 @@ struct SidecarState {
 pub struct FanStatus {
     pub cpu_temp: u8,
     pub gpu_temp: u8,
-    pub cpu_fan_speed: u8,
-    pub gpu_fan_speed: u8,
+    pub cpu_fan_speed: u16,
+    pub gpu_fan_speed: u16,
     pub cooler_boost: bool,
 }
 
@@ -26,8 +26,8 @@ enum SidecarResponse {
     Status {
         cpu_temp: u8,
         gpu_temp: u8,
-        cpu_fan_speed: u8,
-        gpu_fan_speed: u8,
+        cpu_fan_speed: u16,
+        gpu_fan_speed: u16,
         cooler_boost: bool,
     },
     #[serde(rename = "ok")]

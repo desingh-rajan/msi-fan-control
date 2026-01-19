@@ -32,8 +32,8 @@ enum Command {
 struct Status {
     cpu_temp: u8,
     gpu_temp: u8,
-    cpu_fan_speed: u8,
-    gpu_fan_speed: u8,
+    cpu_fan_speed: u16,
+    gpu_fan_speed: u16,
     cooler_boost: bool,
 }
 
@@ -65,8 +65,11 @@ fn write_ec_byte(file: &mut File, offset: u64, value: u8) -> io::Result<()> {
 fn get_status(file: &mut File) -> Result<Status, String> {
     let cpu_temp = read_ec_byte(file, REG_CPU_TEMP).map_err(|e| e.to_string())?;
     let gpu_temp = read_ec_byte(file, REG_GPU_TEMP).map_err(|e| e.to_string())?;
-    let cpu_fan_speed = read_ec_byte(file, REG_CPU_FAN_SPEED).map_err(|e| e.to_string())?;
-    let gpu_fan_speed = read_ec_byte(file, REG_GPU_FAN_SPEED).map_err(|e| e.to_string())?;
+
+    // Read single byte duty cycle and cast to u16 for frontend compatibility
+    let cpu_fan_speed = read_ec_byte(file, REG_CPU_FAN_SPEED).map_err(|e| e.to_string())? as u16;
+    let gpu_fan_speed = read_ec_byte(file, REG_GPU_FAN_SPEED).map_err(|e| e.to_string())? as u16;
+
     let cooler_boost_reg = read_ec_byte(file, REG_COOLER_BOOST).map_err(|e| e.to_string())?;
     let cooler_boost = (cooler_boost_reg & COOLER_BOOST_BIT) != 0;
 
