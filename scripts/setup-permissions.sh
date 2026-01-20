@@ -60,18 +60,23 @@ cat <<EOF | sudo tee /usr/share/polkit-1/actions/com.msi.fancontrol.dev.policy >
 EOF
 
 # Grant specific permission to current user group (likely sudo)
-# Using .pkla for localauthority (older Polkit/Ubuntu standard)
-PKLA_FILE="/etc/polkit-1/localauthority/50-local.d/com.msi.fancontrol.pkla"
+# Using .rules for modern Polkit (Ubuntu 24.04+)
+RULES_FILE="/etc/polkit-1/rules.d/99-com.msi.fancontrol.rules"
 
-echo "Creating PKLA override at $PKLA_FILE..."
+echo "Creating Polkit rules override at $RULES_FILE..."
 
-cat <<EOF | sudo tee $PKLA_FILE > /dev/null
-[Allow MSI Sidecar]
-Identity=unix-group:sudo;unix-group:wheel;unix-user:$USER
-Action=com.msi.fancontrol.run-sidecar;com.msi.fancontrol.run-sidecar-dev
-ResultAny=yes
-ResultInactive=yes
-ResultActive=yes
+# Ensure directory exists
+sudo mkdir -p "$(dirname "$RULES_FILE")"
+
+cat <<EOF | sudo tee $RULES_FILE > /dev/null
+/* Allow members of the sudo/wheel group to execute the sidecar without a password */
+polkit.addRule(function(action, subject) {
+    if ((action.id == "com.msi.fancontrol.run-sidecar" ||
+         action.id == "com.msi.fancontrol.run-sidecar-dev") &&
+        subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
+    }
+});
 EOF
 
 echo "Done! Policy files installed. You might need to restart."

@@ -12,8 +12,12 @@ const EC_IO_PATH: &str = "/sys/kernel/debug/ec/ec0/io";
 // Register offsets from MSI EC documentation
 const REG_CPU_TEMP: u64 = 0x68;
 const REG_GPU_TEMP: u64 = 0x80;
-const REG_CPU_FAN_SPEED: u64 = 0x71;
-const REG_GPU_FAN_SPEED: u64 = 0x89;
+// Note: 0x71 and 0x89 are duty cycles. Use 0xCC-0xCD and 0xCE-0xCF for RPM.
+const REG_CPU_FAN_SPEED_HIGH: u64 = 0xCC;
+const REG_CPU_FAN_SPEED_LOW: u64 = 0xCD;
+const REG_GPU_FAN_SPEED_HIGH: u64 = 0xCE;
+const REG_GPU_FAN_SPEED_LOW: u64 = 0xCF;
+
 const REG_COOLER_BOOST: u64 = 0x98;
 const COOLER_BOOST_BIT: u8 = 0x80; // Bit 7
 
@@ -55,6 +59,13 @@ fn read_ec_byte(file: &mut File, offset: u64) -> io::Result<u8> {
     Ok(buf[0])
 }
 
+fn read_ec_word(file: &mut File, high_offset: u64, low_offset: u64) -> io::Result<u16> {
+    let high = read_ec_byte(file, high_offset)?;
+    let low = read_ec_byte(file, low_offset)?;
+    // Combine bytes: High byte << 8 | Low byte
+    Ok(((high as u16) << 8) | (low as u16))
+}
+
 fn write_ec_byte(file: &mut File, offset: u64, value: u8) -> io::Result<()> {
     file.seek(SeekFrom::Start(offset))?;
     file.write_all(&[value])?;
@@ -66,9 +77,12 @@ fn get_status(file: &mut File) -> Result<Status, String> {
     let cpu_temp = read_ec_byte(file, REG_CPU_TEMP).map_err(|e| e.to_string())?;
     let gpu_temp = read_ec_byte(file, REG_GPU_TEMP).map_err(|e| e.to_string())?;
 
-    // Read single byte duty cycle and cast to u16 for frontend compatibility
-    let cpu_fan_speed = read_ec_byte(file, REG_CPU_FAN_SPEED).map_err(|e| e.to_string())? as u16;
-    let gpu_fan_speed = read_ec_byte(file, REG_GPU_FAN_SPEED).map_err(|e| e.to_string())? as u16;
+    // Read real RPM from tachometer registers
+    let cpu_fan_speed = read_ec_word(file, REG_CPU_FAN_SPEED_HIGH, REG_CPU_FAN_SPEED_LOW)
+        .map_err(|e| e.to_string())?;
+
+    let gpu_fan_speed = read_ec_word(file, REG_GPU_FAN_SPEED_HIGH, REG_GPU_FAN_SPEED_LOW)
+        .map_err(|e| e.to_string())?;
 
     let cooler_boost_reg = read_ec_byte(file, REG_COOLER_BOOST).map_err(|e| e.to_string())?;
     let cooler_boost = (cooler_boost_reg & COOLER_BOOST_BIT) != 0;

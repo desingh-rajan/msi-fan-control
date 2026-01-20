@@ -34,13 +34,9 @@
   function updateFanDisplayValues() {
     if (!status) return;
 
-    // Map duty cycle (0-150) to RPM (0-6000)
-    // This is the most reliable method for this model
-    const MAX_DUTY = 150;
-    const MAX_RPM = 6000;
-
-    cpuFanSpeed = Math.round((status.cpu_fan_speed / MAX_DUTY) * MAX_RPM);
-    gpuFanSpeed = Math.round((status.gpu_fan_speed / MAX_DUTY) * MAX_RPM);
+    // Backend now returns real RPM
+    cpuFanSpeed = status.cpu_fan_speed;
+    gpuFanSpeed = status.gpu_fan_speed;
 
     // Animation speed based on RPM
     cpuFanDuration = cpuFanSpeed > 100 ? 1200 / cpuFanSpeed : 0;
