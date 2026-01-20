@@ -62,6 +62,17 @@
 }
 
 /* Toggle Switch */
+.toggle-track {
+  background-color: #334155;
+  /* Slate 700 */
+  transition: background-color 0.3s ease;
+}
+
+:global([data-theme="light"]) .toggle-track {
+  background-color: #cbd5e1;
+  /* Slate 300 for Light Mode */
+}
+
 .toggle-bg {
   transition: background-color 0.3s ease;
 }
@@ -142,4 +153,80 @@
     transform: scale(0.95);
     opacity: 0.5;
   }
+}
+
+/* Main App Container Styling */
+#app-container {
+  /* Default Dark Variables */
+  --bg-deep: #0a0b10;
+  --surface: #16181d;
+  --surface-accent: #1f2229;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(255, 77, 77, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(77, 148, 255, 0.05) 0%, transparent 50%);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Light Mode Overrides scoped to container */
+#app-container[data-theme="light"] {
+  --bg-deep: #ffffff;
+  --surface: #f1f5f9;
+  --surface-accent: #e2e8f0;
+  --text-primary: #0f172a;
+  /* Slate 900 */
+  --text-secondary: #475569;
+  /* Slate 600 */
+
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(255, 77, 77, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(77, 148, 255, 0.03) 0%, transparent 50%);
+}
+
+/* Light Mode Specific Element Overrides */
+#app-container[data-theme="light"] .glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+#app-container[data-theme="light"] .glass-card:hover {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.1);
+}
+
+/* Force Text Colors in Light Mode */
+#app-container[data-theme="light"] .text-slate-500,
+#app-container[data-theme="light"] .text-slate-400 {
+  color: #475569 !important;
+  /* Dark Slate for visibility */
+}
+
+#app-container[data-theme="light"] h1,
+#app-container[data-theme="light"] h2,
+#app-container[data-theme="light"] h3,
+#app-container[data-theme="light"] .font-bold {
+  color: #0f172a !important;
+  /* Black/Dark Slate for headings */
+}
+
+#app-container[data-theme="light"] .font-medium {
+  color: #334155 !important;
+}
+
+#app-container[data-theme="light"] .text-white\/5,
+#app-container[data-theme="light"] .border-white\/5 {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+#app-container[data-theme="light"] .bg-white\/5,
+#app-container[data-theme="light"] .hover\:bg-white\/5:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
 }

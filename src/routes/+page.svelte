@@ -59,7 +59,34 @@
     }
   }
 
+  /* Theme Settings Logic */
+  let showSettings = false;
+  let theme = "dark";
+
+  function toggleSettings() {
+    showSettings = !showSettings;
+  }
+
+  function toggleTheme() {
+    theme = theme === "dark" ? "light" : "dark";
+    if (theme === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    localStorage.setItem("theme", theme);
+  }
+
   onMount(async () => {
+    // Load saved theme
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme) {
+      theme = savedTheme;
+      if (theme === "light") {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    }
+
     setTimeout(() => {
       initialLoading = false;
     }, 2000);
@@ -85,7 +112,8 @@
 
 <div
   id="app-container"
-  class="h-screen flex flex-col transition-opacity duration-1000"
+  data-theme={theme}
+  class="h-screen flex flex-col transition-colors duration-500"
   style:box-shadow={status?.cooler_boost
     ? "inset 0 0 100px rgba(255, 77, 77, 0.05)"
     : "none"}
@@ -143,13 +171,73 @@
           >{status ? "System Optimal" : "Connecting..."}</span
         >
       </div>
-      <button class="p-2 hover:bg-white/5 rounded-full transition-colors">
+      <button
+        class="p-2 hover:bg-white/5 rounded-full transition-colors"
+        on:click={toggleSettings}
+      >
         <span class="material-symbols-outlined text-slate-400 text-xl"
           >settings</span
         >
       </button>
     </div>
   </header>
+
+  <!-- Settings Modal -->
+  {#if showSettings}
+    <div
+      class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+      on:click|self={toggleSettings}
+    >
+      <div
+        class="glass-card w-full max-w-md rounded-2xl p-6 relative overflow-hidden"
+      >
+        <div class="flex items-center justify-between mb-8">
+          <h2 class="text-xl font-bold">Settings</h2>
+          <button
+            on:click={toggleSettings}
+            class="p-1 rounded-full hover:bg-white/5 transition-colors"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <!-- Theme Toggle -->
+        <div
+          class="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5"
+        >
+          <div class="flex items-center gap-3">
+            <span
+              class="material-symbols-outlined {theme === 'dark'
+                ? 'text-blue-400'
+                : 'text-orange-400'}"
+            >
+              {theme === "dark" ? "dark_mode" : "light_mode"}
+            </span>
+            <div>
+              <div class="text-sm font-bold">App Theme</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                {theme === "dark" ? "Dark Mode" : "Light Mode"}
+              </div>
+            </div>
+          </div>
+
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              class="sr-only toggle-checkbox"
+              checked={theme === "light"}
+              on:change={toggleTheme}
+            />
+            <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
+          </label>
+        </div>
+
+        <div class="mt-8 text-center text-[10px] text-slate-500 uppercase">
+          MSI Fan Control v0.1.0
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if error}
     <div
