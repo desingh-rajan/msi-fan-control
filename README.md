@@ -140,6 +140,9 @@ npm run tauri dev
 npm run tauri build
 ```
 
+## Credits
+Core hardware control logic, including EC register offsets and RPM calculation formulas, was researched and adapted from the excellent [MControlCenter](https://github.com/dmitry-s93/MControlCenter) project by Dmitry Serov.
+
 ## License
 
 MIT

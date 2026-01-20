@@ -8,6 +8,8 @@
   interface FanStatus {
     cpu_temp: number;
     gpu_temp: number;
+    fan1_rpm: number;
+    fan2_rpm: number;
     cooler_boost: boolean;
   }
 
@@ -53,9 +55,10 @@
       // Immediately refresh status
       status = await invoke<FanStatus>("get_status");
     } catch (err) {
-      error = String(err);
       console.error("Failed to toggle:", err);
       checkbox.checked = !newState;
+    } finally {
+        localStorage.setItem("cooler_boost", String(newState));
     }
   }
 
@@ -85,6 +88,16 @@
       if (theme === "light") {
         document.documentElement.setAttribute("data-theme", "light");
       }
+    }
+
+    // Load saved cooler boost state and apply it
+    const savedCoolerBoost = localStorage.getItem("cooler_boost");
+    if (savedCoolerBoost === "true") {
+        try {
+            await invoke("set_cooler_boost", { enabled: true });
+        } catch (e) {
+            console.error("Failed to restore cooler boost state:", e);
+        }
     }
 
     setTimeout(() => {
@@ -335,15 +348,21 @@
             >thermostat</span
           >
         </div>
-        <div class="flex items-baseline gap-2">
-          <span
-            class="text-5xl font-extrabold tracking-tighter transition-all duration-300"
-            class:text-red-500={(status?.cpu_temp ?? 0) > 85}
-          >
-            {status?.cpu_temp ?? "--"}
-          </span>
-          <span class="text-2xl text-slate-500 font-light">°C</span>
-        </div>
+          <div class="flex flex-col items-end">
+             <div class="flex items-baseline gap-2">
+                <span
+                    class="text-4xl font-extrabold tracking-tighter transition-all duration-300"
+                    class:text-red-500={(status?.cpu_temp ?? 0) > 85}
+                >
+                    {status?.cpu_temp ?? "--"}
+                </span>
+                <span class="text-xl text-slate-500 font-light">°C</span>
+            </div>
+            <div class="flex items-center gap-2 mt-2">
+                 <span class="text-xs text-slate-500 font-bold uppercase tracking-wider">Fan 1</span>
+                 <span class="text-lg font-mono font-bold text-slate-300">{status?.fan1_rpm ?? 0} <span class="text-xs text-slate-500 font-normal">RPM</span></span>
+            </div>
+          </div>
       </div>
 
       <!-- GPU Card -->
@@ -369,14 +388,20 @@
             >videogame_asset</span
           >
         </div>
-        <div class="flex items-baseline gap-2">
-          <span
-            class="text-5xl font-extrabold tracking-tighter transition-all duration-300"
-          >
-            {status?.gpu_temp ?? "--"}
-          </span>
-          <span class="text-2xl text-slate-500 font-light">°C</span>
-        </div>
+        <div class="flex flex-col items-end">
+             <div class="flex items-baseline gap-2">
+                <span
+                    class="text-4xl font-extrabold tracking-tighter transition-all duration-300"
+                >
+                    {status?.gpu_temp ?? "--"}
+                </span>
+                <span class="text-xl text-slate-500 font-light">°C</span>
+            </div>
+             <div class="flex items-center gap-2 mt-2">
+                 <span class="text-xs text-slate-500 font-bold uppercase tracking-wider">Fan 2</span>
+                 <span class="text-lg font-mono font-bold text-slate-300">{status?.fan2_rpm ?? 0} <span class="text-xs text-slate-500 font-normal">RPM</span></span>
+            </div>
+          </div>
       </div>
     </div>
   </main>

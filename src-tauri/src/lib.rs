@@ -14,6 +14,8 @@ struct SidecarState {
 pub struct FanStatus {
     pub cpu_temp: u8,
     pub gpu_temp: u8,
+    pub fan1_rpm: u32,
+    pub fan2_rpm: u32,
     pub cooler_boost: bool,
 }
 
@@ -24,6 +26,8 @@ enum SidecarResponse {
     Status {
         cpu_temp: u8,
         gpu_temp: u8,
+        fan1_rpm: u32,
+        fan2_rpm: u32,
         cooler_boost: bool,
     },
     #[serde(rename = "ok")]
@@ -120,10 +124,14 @@ async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, Stri
         SidecarResponse::Status {
             cpu_temp,
             gpu_temp,
+            fan1_rpm,
+            fan2_rpm,
             cooler_boost,
         } => Ok(FanStatus {
             cpu_temp,
             gpu_temp,
+            fan1_rpm,
+            fan2_rpm,
             cooler_boost,
         }),
         SidecarResponse::Error { message } => Err(message),
@@ -161,10 +169,14 @@ async fn get_status(state: State<'_, SidecarState>) -> Result<FanStatus, String>
         SidecarResponse::Status {
             cpu_temp,
             gpu_temp,
+            fan1_rpm,
+            fan2_rpm,
             cooler_boost,
         } => Ok(FanStatus {
             cpu_temp,
             gpu_temp,
+            fan1_rpm,
+            fan2_rpm,
             cooler_boost,
         }),
         SidecarResponse::Error { message } => Err(message),
