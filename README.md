@@ -15,18 +15,20 @@ A Tauri-based fan control utility for MSI laptops running Linux.
 - **Secure Architecture** - Privileged sidecar pattern with pkexec
 - **Modern UI** - Dark theme with gradient accents
 
-## Premium Features (Coming Soon)
+## Roadmap
 
-- **Custom Fan Curves** - Set your own fan speed profiles
-- **Auto-Profile Switching** - Change profiles based on power source (AC/Battery)
-- **Historical Graphs** - View temperature and fan speed history
-- **System Tray Customization** - More options for the tray icon
-- **Multi-Model Support** - Support for more MSI laptop models
+- **Custom Fan Curves** - Advanced fan speed profile customization
+- **Intelligent Profile Switching** - Automated profile adjustments based on
+  power state (AC/Battery)
+- **Telemetry & Analytics** - Visual temperature and performance history
+- **Enhanced System Integration** - Expanded tray options and system
+  notifications
+- **Extended Hardware Support** - Support for additional MSI laptop models
 
 ## Supported Models
 
 - MSI GF65 Thin 10SDR (Main development target)
-- *More models planned for future releases*
+- _More models planned for future releases_
 
 ## Prerequisites
 
@@ -37,6 +39,7 @@ A Tauri-based fan control utility for MSI laptops running Linux.
    ```
 
 To make this persistent across reboots:
+
 ```bash
 echo "ec_sys" | sudo tee /etc/modules-load.d/ec_sys.conf
 echo "options ec_sys write_support=1" | sudo tee /etc/modprobe.d/ec_sys.conf
@@ -45,11 +48,13 @@ echo "options ec_sys write_support=1" | sudo tee /etc/modprobe.d/ec_sys.conf
 ## Installation
 
 ### From .deb (Debian/Ubuntu)
+
 ```bash
 sudo dpkg -i msi-fan-control_0.1.0_amd64.deb
 ```
 
 ### From AppImage
+
 ```bash
 chmod +x msi-fan-control_0.1.0_amd64.AppImage
 ./msi-fan-control_0.1.0_amd64.AppImage
@@ -57,7 +62,8 @@ chmod +x msi-fan-control_0.1.0_amd64.AppImage
 
 ## How It Works
 
-This application separates the UI (User Space) from the hardware control (Root Space) using a secure sidecar pattern.
+This application separates the UI (User Space) from the hardware control (Root
+Space) using a secure sidecar pattern.
 
 ```
 ┌─────────────────┐          ┌─────────────────┐
@@ -77,16 +83,19 @@ This application separates the UI (User Space) from the hardware control (Root S
                              └─────────────────┘
 ```
 
-The GUI runs as a normal user. Only the small `msi-sidecar` binary runs as root, authorized via standard Linux Polkit.
+The GUI runs as a normal user. Only the small `msi-sidecar` binary runs as root,
+authorized via standard Linux Polkit.
 
 ## Development
 
 ### Requirements
+
 - Node.js 18+
 - Rust 1.70+
 - Linux with GTK3 and WebKit2GTK
 
 ### Build from source
+
 ```bash
 # Install dependencies
 npm install
