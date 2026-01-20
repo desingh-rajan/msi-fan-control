@@ -185,10 +185,12 @@ fn main() {
                                 if enabled { "enabled" } else { "disabled" }
                             ),
                         });
+                        /*
                         // Also send updated status
                         if let Ok(status) = get_status(&mut ctx.file) {
                             send_response(&Response::Status(status));
                         }
+                        */
                     }
                     Err(e) => send_response(&Response::Error { message: e }),
                 }
