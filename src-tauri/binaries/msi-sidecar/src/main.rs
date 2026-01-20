@@ -52,13 +52,6 @@ fn read_ec_byte(file: &mut File, offset: u64) -> io::Result<u8> {
     Ok(buf[0])
 }
 
-fn read_ec_word(file: &mut File, high_offset: u64, low_offset: u64) -> io::Result<u16> {
-    let high = read_ec_byte(file, high_offset)?;
-    let low = read_ec_byte(file, low_offset)?;
-    // Combine bytes: High byte << 8 | Low byte
-    Ok(((high as u16) << 8) | (low as u16))
-}
-
 fn write_ec_byte(file: &mut File, offset: u64, value: u8) -> io::Result<()> {
     file.seek(SeekFrom::Start(offset))?;
     file.write_all(&[value])?;
