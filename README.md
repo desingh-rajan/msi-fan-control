@@ -99,9 +99,16 @@ authorized via standard Linux Polkit.
 
 ### Requirements
 
-- Node.js 18+
+- Node.js 20+
 - Rust 1.70+
 - Linux with GTK3 and WebKit2GTK
+
+#### System Dependencies (Ubuntu 24.04)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev
+```
 
 ### Build from source
 
