@@ -4,20 +4,34 @@
   --surface-accent: #1f2229;
   --accent-primary: #ff4d4d;
   --accent-secondary: #4d94ff;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+}
+
+:global(body) {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(255, 77, 77, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(77, 148, 255, 0.05) 0%, transparent 50%);
 }
 
 /* Glassmorphism */
 .glass-card {
-  background: rgba(22, 24, 29, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(22, 24, 29, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
   transform: translateY(-2px);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.5);
+  background: rgba(22, 24, 29, 0.8);
 }
 
 .status-dot {
@@ -26,6 +40,7 @@
   border-radius: 50%;
   background: #10b981;
   box-shadow: 0 0 12px #10b981;
+  transition: all 0.3s ease;
 }
 
 /* Scrollbars */
@@ -42,25 +57,35 @@
   border-radius: 10px;
 }
 
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
 /* Toggle Switch */
+.toggle-bg {
+  transition: background-color 0.3s ease;
+}
+
 .toggle-bg:after {
   content: "";
   position: absolute;
   top: 4px;
   left: 4px;
   background: white;
-  border-radius: 99px;
+  border-radius: 50%;
   height: 20px;
   width: 20px;
-  transition: 0.3s;
+  transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .toggle-checkbox:checked+.toggle-bg:after {
-  transform: translateX(24px);
+  transform: translateX(20px);
 }
 
 .toggle-checkbox:checked+.toggle-bg {
   background-color: var(--accent-primary);
+  box-shadow: 0 0 15px rgba(255, 77, 77, 0.4);
 }
 
 /* Loader */

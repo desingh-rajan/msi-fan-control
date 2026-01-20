@@ -39,6 +39,16 @@ This project specifically targets the **Cooler Boost** functionality.
 - MSI GF65 Thin 10SDR (Main development target)
 - _More models planned for future releases_
 
+## Known Issues
+
+### "Connecting..." Stuck / Permission Denied
+If the application gets stuck on "Connecting..." or shows `Permission denied` errors, it likely means the `ec_sys` kernel module was unloaded (common after kernel updates).
+
+**Fix:**
+```bash
+sudo modprobe ec_sys write_support=1
+```
+
 ## Prerequisites
 
 1. **Disable Secure Boot** in your BIOS settings.

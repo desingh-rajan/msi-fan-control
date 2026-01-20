@@ -163,6 +163,66 @@
   <!-- Main Content -->
   <main class="flex-1 overflow-y-auto p-8 max-w-6xl mx-auto w-full">
     <!-- Sensor Grid -->
+    <!-- Dual Fan Control Center -->
+    <!-- Controls -->
+    <div class="glass-card rounded-2xl p-6 flex flex-col justify-between mb-8">
+      <div>
+        <div class="flex items-center gap-3 mb-8">
+          <span class="material-symbols-outlined text-slate-400">tune</span>
+          <span
+            class="text-xs text-slate-400 font-bold uppercase tracking-wider"
+            >Fan Controls</span
+          >
+        </div>
+
+        <!-- Cooler Boost -->
+        <div
+          class="p-4 rounded-xl border border-white/5 bg-white/5 flex items-center justify-between"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-red-500">bolt</span>
+            <div>
+              <div class="text-sm font-bold">Cooler Boost</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                Maximum Speed
+              </div>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              class="sr-only toggle-checkbox"
+              checked={status?.cooler_boost || false}
+              on:change={toggleCoolerBoost}
+            />
+            <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
+          </label>
+        </div>
+
+        <!-- Silent (Disabled) -->
+        <!--
+        <div
+          class="p-4 rounded-xl border border-white/5 flex items-center justify-between opacity-60 mt-4"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-blue-400">eco</span>
+            <div>
+              <div class="text-sm font-bold">Silent Profile</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                Low Acoustic
+              </div>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-not-allowed">
+            <input type="checkbox" disabled class="sr-only" />
+            <div class="toggle-bg w-12 h-7 bg-slate-800 rounded-full"></div>
+          </label>
+        </div>
+        -->
+      </div>
+    </div>
+
+    <!-- Sensor Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       <!-- CPU Card -->
       <div class="glass-card rounded-2xl p-6 relative overflow-hidden group">
@@ -228,63 +288,6 @@
             {status?.gpu_temp ?? "--"}
           </span>
           <span class="text-2xl text-slate-500 font-light">°C</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Dual Fan Control Center -->
-    <!-- Controls -->
-    <div class="glass-card rounded-2xl p-6 flex flex-col justify-between">
-      <div>
-        <div class="flex items-center gap-3 mb-8">
-          <span class="material-symbols-outlined text-slate-400">tune</span>
-          <span
-            class="text-xs text-slate-400 font-bold uppercase tracking-wider"
-            >Fan Controls</span
-          >
-        </div>
-
-        <!-- Cooler Boost -->
-        <div
-          class="p-4 rounded-xl border border-white/5 bg-white/5 flex items-center justify-between mb-4"
-        >
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500">bolt</span>
-            <div>
-              <div class="text-sm font-bold">Cooler Boost</div>
-              <div class="text-[10px] text-slate-500 font-semibold uppercase">
-                Maximum Speed
-              </div>
-            </div>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              class="sr-only toggle-checkbox"
-              checked={status?.cooler_boost}
-              on:change={toggleCoolerBoost}
-            />
-            <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
-          </label>
-        </div>
-
-        <!-- Silent (Disabled) -->
-        <div
-          class="p-4 rounded-xl border border-white/5 flex items-center justify-between opacity-60"
-        >
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-blue-400">eco</span>
-            <div>
-              <div class="text-sm font-bold">Silent Profile</div>
-              <div class="text-[10px] text-slate-500 font-semibold uppercase">
-                Low Acoustic
-              </div>
-            </div>
-          </div>
-          <label class="relative inline-flex items-center cursor-not-allowed">
-            <input type="checkbox" disabled class="sr-only" />
-            <div class="toggle-bg w-12 h-7 bg-slate-800 rounded-full"></div>
-          </label>
         </div>
       </div>
     </div>
