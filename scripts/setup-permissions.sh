@@ -1,24 +1,35 @@
 #!/bin/bash
 
-# MSI Fan Control - Setup Permissions
-# This script configures Polkit to allow the sidecar to run as root without password prompts.
+# This script sets up the Polkit policy to allow the MSI Sidecar to run without a password.
+# It detects if you are running in a development environment or if the app is installed.
 
-set -e
+# 1. Detect Sidecar Path
+SIDECAR_PATH=""
 
-APP_NAME="com.msi.fancontrol"
-POLKIT_DIR="/usr/share/polkit-1/actions"
-SIDECAR_NAME="msi-sidecar"
+# Check for installed version first
+if [ -f "/usr/bin/msi-sidecar" ]; then
+    SIDECAR_PATH="/usr/bin/msi-sidecar"
+    echo "Detected Installed Sidecar: $SIDECAR_PATH"
+# Check for local debug build
+elif [ -f "src-tauri/target/debug/msi-sidecar-x86_64-unknown-linux-gnu" ]; then
+    SIDECAR_PATH="$(pwd)/src-tauri/target/debug/msi-sidecar-x86_64-unknown-linux-gnu"
+    echo "Detected Local Debug Sidecar: $SIDECAR_PATH"
+# Check for local release build
+elif [ -f "src-tauri/target/release/msi-sidecar-x86_64-unknown-linux-gnu" ]; then
+    SIDECAR_PATH="$(pwd)/src-tauri/target/release/msi-sidecar-x86_64-unknown-linux-gnu"
+    echo "Detected Local Release Sidecar: $SIDECAR_PATH"
+else
+    echo "Error: Could not find any sidecar binary."
+    echo "  - If developing: Run 'npm run tauri build' or 'dev' first."
+    echo "  - If installed: Ensure the package is installed correctly."
+    exit 1
+fi
 
-# Determine paths
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEV_SIDECAR_PATH="$PROJECT_ROOT/src-tauri/target/debug/$SIDECAR_NAME"
-RELEASE_SIDECAR_PATH="/usr/bin/$SIDECAR_NAME"
+# 2. Create Policy File
+POLICY_NAME="com.msi.fancontrol.run-sidecar.policy"
+TEMP_POLICY="/tmp/$POLICY_NAME"
 
-echo "Setting up Polkit permissions for MSI Fan Control..."
-
-
-# Generate Policy for Release Binary
-cat <<EOF | sudo tee /usr/share/polkit-1/actions/com.msi.fancontrol.policy > /dev/null
+cat <<EOF > $TEMP_POLICY
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
@@ -26,58 +37,30 @@ cat <<EOF | sudo tee /usr/share/polkit-1/actions/com.msi.fancontrol.policy > /de
 <policyconfig>
   <action id="com.msi.fancontrol.run-sidecar">
     <description>Run MSI Fan Control Sidecar</description>
-    <message>Authentication is required to control fan speeds</message>
+    <message>Authentication is required to run the MSI Fan Control helper</message>
     <defaults>
-      <allow_any>auth_admin</allow_any>
-      <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>auth_admin</allow_active>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">$RELEASE_SIDECAR_PATH</annotate>
-    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+    <annotate key="org.freedesktop.policykit.exec.path">$SIDECAR_PATH</annotate>
   </action>
 </policyconfig>
 EOF
 
-# Generate Policy for Dev Binary
-cat <<EOF | sudo tee /usr/share/polkit-1/actions/com.msi.fancontrol.dev.policy > /dev/null
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE policyconfig PUBLIC
- "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
-<policyconfig>
-  <action id="com.msi.fancontrol.run-sidecar-dev">
-    <description>Run MSI Fan Control Sidecar (Dev)</description>
-    <message>Authentication is required to control fan speeds (Dev)</message>
-    <defaults>
-      <allow_any>auth_admin</allow_any>
-      <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>auth_admin</allow_active>
-    </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">$DEV_SIDECAR_PATH</annotate>
-    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
-  </action>
-</policyconfig>
-EOF
+# 3. Install Policy
+echo "Installing Polkit policy to /usr/share/polkit-1/actions/..."
+if sudo cp $TEMP_POLICY /usr/share/polkit-1/actions/$POLICY_NAME; then
+    echo "Success: Policy installed for $SIDECAR_PATH"
+    echo "You can now run the app without a password."
+    
+    # Restart polkit just in case
+    if command -v systemctl >/dev/null 2>&1; then
+        sudo systemctl restart polkit
+    fi
+else
+    echo "Failed to install policy."
+    exit 1
+fi
 
-# Grant specific permission to current user group (likely sudo)
-# Using .rules for modern Polkit (Ubuntu 24.04+)
-RULES_FILE="/etc/polkit-1/rules.d/99-com.msi.fancontrol.rules"
-
-echo "Creating Polkit rules override at $RULES_FILE..."
-
-# Ensure directory exists
-sudo mkdir -p "$(dirname "$RULES_FILE")"
-
-cat <<EOF | sudo tee $RULES_FILE > /dev/null
-/* Allow members of the sudo/wheel group to execute the sidecar without a password */
-polkit.addRule(function(action, subject) {
-    if ((action.id == "com.msi.fancontrol.run-sidecar" ||
-         action.id == "com.msi.fancontrol.run-sidecar-dev") &&
-        subject.isInGroup("sudo")) {
-        return polkit.Result.YES;
-    }
-});
-EOF
-
-echo "Done! Policy files installed. You might need to restart."
-
+rm $TEMP_POLICY

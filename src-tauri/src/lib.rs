@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use sysinfo::System;
-use tauri::State;
+use tauri::{Manager, State};
 
 // State to track the sidecar process
 struct SidecarState {
@@ -272,6 +272,12 @@ fn get_hardware_info() -> HardwareInfo {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = app
+                .get_webview_window("main")
+                .expect("no main window")
+                .set_focus();
+        }))
         .manage(SidecarState {
             child: Mutex::new(None),
         })

@@ -1,6 +1,6 @@
 [package]
 name = "msi-fan-control"
-version = "0.3.1"
+version = "0.3.2"
 description = "MSI Fan Control"
 authors = ["you"]
 edition = "2021"
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.37.2"
