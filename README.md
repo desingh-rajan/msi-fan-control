@@ -8,12 +8,21 @@ A Tauri-based fan control utility for MSI laptops running Linux.
 ![Platform](https://img.shields.io/badge/platform-Linux-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
-## Features
+## MSI Fan Control (POC)
 
-- **Cooler Boost** - Toggle maximum fan speed (~6000 RPM)
-- **Real-time Monitoring** - CPU/GPU temperatures and fan speeds
-- **Secure Architecture** - Privileged sidecar pattern with pkexec
-- **Modern UI** - Dark theme with gradient accents
+A Proof of Concept (POC) application to control MSI laptop fans on Linux (specifically Ubuntu).
+
+## Motivation
+I created this tool because I bought an MSI laptop primarily for gaming, but I also use it heavily for web development work (Docker, Node.js, etc.). On Windows, MSI Dragon Center manages cooling, but there is no official support for Linux. I needed a way to manually toggle "Cooler Boost" (max fan speed) to manage heat during intense workloads.
+
+This project specifically targets the **Cooler Boost** functionality.
+> **Note:** Previous versions attempted to display real-time fan speeds (RPM), but this feature proved too flaky and unreliable, so it has been removed to focus on the core functionality that works.
+
+## Features
+- **Real-time Temperature Monitoring**: Displays CPU and GPU temperatures.
+- **Cooler Boost Toggle**: Manually turn on/off the maximum fan speed mode.
+- **Modern UI**: Clean, glassmorphism-inspired interface.
+- **System Tray**: Minimize to tray for background monitoring.
 
 ## Roadmap
 

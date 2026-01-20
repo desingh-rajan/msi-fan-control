@@ -7,8 +7,6 @@
   interface FanStatus {
     cpu_temp: number;
     gpu_temp: number;
-    cpu_fan_speed: number;
-    gpu_fan_speed: number;
     cooler_boost: boolean;
   }
 
@@ -24,29 +22,9 @@
   let pollInterval: any;
   let initialLoading = true;
 
-  // Fan speed values are now actual 16-bit RPM from hardware
-  let cpuFanSpeed = 0;
-  let gpuFanSpeed = 0;
-  let cpuFanDuration = 0;
-  let gpuFanDuration = 0;
-  const MAX_DUTY = 150;
-
-  function updateFanDisplayValues() {
-    if (!status) return;
-
-    // Backend now returns real RPM
-    cpuFanSpeed = status.cpu_fan_speed;
-    gpuFanSpeed = status.gpu_fan_speed;
-
-    // Animation speed based on RPM
-    cpuFanDuration = cpuFanSpeed > 100 ? 1200 / cpuFanSpeed : 0;
-    gpuFanDuration = gpuFanSpeed > 100 ? 1200 / gpuFanSpeed : 0;
-  }
-
   async function connect() {
     try {
       status = await invoke<FanStatus>("start_sidecar");
-      updateFanDisplayValues();
       startPolling();
     } catch (e) {
       error = String(e);
@@ -58,7 +36,6 @@
     pollInterval = setInterval(async () => {
       try {
         status = await invoke<FanStatus>("get_status");
-        updateFanDisplayValues();
         error = null;
       } catch (e) {
         console.error("Poll error:", e);
@@ -74,7 +51,6 @@
       await invoke("set_cooler_boost", { enabled: newState });
       // Immediately refresh status
       status = await invoke<FanStatus>("get_status");
-      updateFanDisplayValues();
     } catch (err) {
       error = String(err);
       console.error("Failed to toggle:", err);
@@ -247,262 +223,58 @@
     </div>
 
     <!-- Dual Fan Control Center -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <!-- Dual Fan Visuals -->
-      <div
-        class="lg:col-span-2 glass-card rounded-2xl p-6 flex flex-col justify-center"
-      >
-        <span
-          class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-6"
-          >Active Cooling System</span
-        >
-
-        <div
-          class="flex flex-col md:flex-row items-center justify-around gap-8"
-        >
-          <!-- CPU Fan -->
-          <div class="flex flex-col items-center">
-            <div
-              class="fan-container relative w-40 h-40 flex items-center justify-center mb-4"
-            >
-              <div
-                class="absolute inset-0 rounded-full border-4 border-slate-800/50 flex items-center justify-center"
-              >
-                <div
-                  class="w-[90%] h-[90%] rounded-full border border-white/5"
-                ></div>
-              </div>
-              <svg
-                class="fan-blades w-32 h-32"
-                viewBox="0 0 100 100"
-                style="--fan-speed: {cpuFanDuration}s;"
-              >
-                <defs>
-                  <!-- Ice gradient (cyan/blue) -->
-                  <linearGradient
-                    id="iceGradient"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop offset="0%" stop-color="#67e8f9" stop-opacity="0.9" />
-                    <stop
-                      offset="50%"
-                      stop-color="#22d3ee"
-                      stop-opacity="0.7"
-                    />
-                    <stop
-                      offset="100%"
-                      stop-color="#0891b2"
-                      stop-opacity="0.5"
-                    />
-                  </linearGradient>
-                  <!-- Fire gradient (orange/red) -->
-                  <linearGradient
-                    id="fireGradient"
-                    x1="0%"
-                    y1="100%"
-                    x2="100%"
-                    y2="0%"
-                  >
-                    <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9" />
-                    <stop
-                      offset="50%"
-                      stop-color="#f97316"
-                      stop-opacity="0.8"
-                    />
-                    <stop
-                      offset="100%"
-                      stop-color="#ef4444"
-                      stop-opacity="0.6"
-                    />
-                  </linearGradient>
-                  <!-- Glow filter -->
-                  <filter
-                    id="bladeGlow"
-                    x="-50%"
-                    y="-50%"
-                    width="200%"
-                    height="200%"
-                  >
-                    <feGaussianBlur stdDeviation="1.5" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="8"
-                  fill="#0f172a"
-                  stroke="#334155"
-                  stroke-width="1"
-                ></circle>
-                <!-- Ice blades (top half) -->
-                <g fill="url(#iceGradient)" filter="url(#bladeGlow)">
-                  {#each [0, 1, 2] as i}
-                    <path
-                      d="M50 45 Q55 25, 48 15 Q42 25, 50 45 Z"
-                      transform="rotate({i * 120} 50 50)"
-                    ></path>
-                  {/each}
-                </g>
-                <!-- Fire blades (bottom half) -->
-                <g fill="url(#fireGradient)" filter="url(#bladeGlow)">
-                  {#each [0, 1, 2] as i}
-                    <path
-                      d="M50 55 Q45 75, 52 85 Q58 75, 50 55 Z"
-                      transform="rotate({i * 120} 50 50)"
-                    ></path>
-                  {/each}
-                </g>
-              </svg>
-              <!-- CPU Indicator -->
-              <div
-                class="absolute w-6 h-6 rounded-full bg-slate-900 border border-slate-700 shadow-xl flex items-center justify-center z-10"
-              >
-                <span class="material-symbols-outlined text-[10px] text-red-500"
-                  >memory</span
-                >
-              </div>
-            </div>
-            <div class="text-center">
-              <div class="text-[10px] uppercase tracking-widest text-slate-500">
-                CPU Fan
-              </div>
-              <div class="text-2xl font-bold tabular-nums">
-                {cpuFanSpeed || "--"}
-                <span class="text-xs font-normal text-slate-500">RPM</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Divider -->
-          <div class="hidden md:block w-px h-32 bg-white/5"></div>
-
-          <!-- GPU Fan -->
-          <div class="flex flex-col items-center">
-            <div
-              class="fan-container relative w-40 h-40 flex items-center justify-center mb-4"
-            >
-              <div
-                class="absolute inset-0 rounded-full border-4 border-slate-800/50 flex items-center justify-center"
-              >
-                <div
-                  class="w-[90%] h-[90%] rounded-full border border-white/5"
-                ></div>
-              </div>
-              <svg
-                class="fan-blades w-32 h-32"
-                viewBox="0 0 100 100"
-                style="--fan-speed: {gpuFanDuration}s;"
-              >
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="8"
-                  fill="#0f172a"
-                  stroke="#334155"
-                  stroke-width="1"
-                ></circle>
-                <!-- Ice blades (top half) -->
-                <g fill="url(#iceGradient)" filter="url(#bladeGlow)">
-                  {#each [0, 1, 2] as i}
-                    <path
-                      d="M50 45 Q55 25, 48 15 Q42 25, 50 45 Z"
-                      transform="rotate({i * 120} 50 50)"
-                    ></path>
-                  {/each}
-                </g>
-                <!-- Fire blades (bottom half) -->
-                <g fill="url(#fireGradient)" filter="url(#bladeGlow)">
-                  {#each [0, 1, 2] as i}
-                    <path
-                      d="M50 55 Q45 75, 52 85 Q58 75, 50 55 Z"
-                      transform="rotate({i * 120} 50 50)"
-                    ></path>
-                  {/each}
-                </g>
-              </svg>
-              <!-- GPU Indicator -->
-              <div
-                class="absolute w-6 h-6 rounded-full bg-slate-900 border border-slate-700 shadow-xl flex items-center justify-center z-10"
-              >
-                <span
-                  class="material-symbols-outlined text-[10px] text-blue-500"
-                  >videogame_asset</span
-                >
-              </div>
-            </div>
-            <div class="text-center">
-              <div class="text-[10px] uppercase tracking-widest text-slate-500">
-                GPU Fan
-              </div>
-              <div class="text-2xl font-bold tabular-nums">
-                {gpuFanSpeed || "--"}
-                <span class="text-xs font-normal text-slate-500">RPM</span>
-              </div>
-            </div>
-          </div>
+    <!-- Controls -->
+    <div class="glass-card rounded-2xl p-6 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center gap-3 mb-8">
+          <span class="material-symbols-outlined text-slate-400">tune</span>
+          <span
+            class="text-xs text-slate-400 font-bold uppercase tracking-wider"
+            >Fan Controls</span
+          >
         </div>
-      </div>
 
-      <!-- Controls -->
-      <div class="glass-card rounded-2xl p-6 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center gap-3 mb-8">
-            <span class="material-symbols-outlined text-slate-400">tune</span>
-            <span
-              class="text-xs text-slate-400 font-bold uppercase tracking-wider"
-              >Fan Controls</span
-            >
-          </div>
-
-          <!-- Cooler Boost -->
-          <div
-            class="p-4 rounded-xl border border-white/5 bg-white/5 flex items-center justify-between mb-4"
-          >
-            <div class="flex items-center gap-3">
-              <span class="material-symbols-outlined text-red-500">bolt</span>
-              <div>
-                <div class="text-sm font-bold">Cooler Boost</div>
-                <div class="text-[10px] text-slate-500 font-semibold uppercase">
-                  Maximum Speed
-                </div>
+        <!-- Cooler Boost -->
+        <div
+          class="p-4 rounded-xl border border-white/5 bg-white/5 flex items-center justify-between mb-4"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-red-500">bolt</span>
+            <div>
+              <div class="text-sm font-bold">Cooler Boost</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                Maximum Speed
               </div>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                class="sr-only toggle-checkbox"
-                checked={status?.cooler_boost}
-                on:change={toggleCoolerBoost}
-              />
-              <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
-            </label>
           </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              class="sr-only toggle-checkbox"
+              checked={status?.cooler_boost}
+              on:change={toggleCoolerBoost}
+            />
+            <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
+          </label>
+        </div>
 
-          <!-- Silent (Disabled) -->
-          <div
-            class="p-4 rounded-xl border border-white/5 flex items-center justify-between opacity-60"
-          >
-            <div class="flex items-center gap-3">
-              <span class="material-symbols-outlined text-blue-400">eco</span>
-              <div>
-                <div class="text-sm font-bold">Silent Profile</div>
-                <div class="text-[10px] text-slate-500 font-semibold uppercase">
-                  Low Acoustic
-                </div>
+        <!-- Silent (Disabled) -->
+        <div
+          class="p-4 rounded-xl border border-white/5 flex items-center justify-between opacity-60"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-blue-400">eco</span>
+            <div>
+              <div class="text-sm font-bold">Silent Profile</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                Low Acoustic
               </div>
             </div>
-            <label class="relative inline-flex items-center cursor-not-allowed">
-              <input type="checkbox" disabled class="sr-only" />
-              <div class="toggle-bg w-12 h-7 bg-slate-800 rounded-full"></div>
-            </label>
           </div>
+          <label class="relative inline-flex items-center cursor-not-allowed">
+            <input type="checkbox" disabled class="sr-only" />
+            <div class="toggle-bg w-12 h-7 bg-slate-800 rounded-full"></div>
+          </label>
         </div>
       </div>
     </div>
@@ -535,23 +307,6 @@
     --surface-accent: #1f2229;
     --accent-primary: #ff4d4d;
     --accent-secondary: #4d94ff;
-  }
-
-  /* Fan Animation */
-  .fan-container {
-    perspective: 800px;
-  }
-  .fan-blades {
-    transform-origin: center;
-    animation: spin var(--fan-speed, 0s) linear infinite;
-  }
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   /* Glassmorphism */

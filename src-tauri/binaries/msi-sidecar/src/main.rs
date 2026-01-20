@@ -12,11 +12,6 @@ const EC_IO_PATH: &str = "/sys/kernel/debug/ec/ec0/io";
 // Register offsets from MSI EC documentation
 const REG_CPU_TEMP: u64 = 0x68;
 const REG_GPU_TEMP: u64 = 0x80;
-// Note: 0x71 and 0x89 are duty cycles. Use 0xCC-0xCD and 0xCE-0xCF for RPM.
-const REG_CPU_FAN_SPEED_HIGH: u64 = 0xCC;
-const REG_CPU_FAN_SPEED_LOW: u64 = 0xCD;
-const REG_GPU_FAN_SPEED_HIGH: u64 = 0xCE;
-const REG_GPU_FAN_SPEED_LOW: u64 = 0xCF;
 
 const REG_COOLER_BOOST: u64 = 0x98;
 const COOLER_BOOST_BIT: u8 = 0x80; // Bit 7
@@ -36,8 +31,6 @@ enum Command {
 struct Status {
     cpu_temp: u8,
     gpu_temp: u8,
-    cpu_fan_speed: u16,
-    gpu_fan_speed: u16,
     cooler_boost: bool,
 }
 
@@ -77,30 +70,12 @@ fn get_status(file: &mut File) -> Result<Status, String> {
     let cpu_temp = read_ec_byte(file, REG_CPU_TEMP).map_err(|e| e.to_string())?;
     let gpu_temp = read_ec_byte(file, REG_GPU_TEMP).map_err(|e| e.to_string())?;
 
-    // Read real RPM from tachometer registers
-    // CPU Fan (0xCC/0xCD) appears to be a period counter (inversely proportional to RPM)
-    // Formula derived empirically: RPM = ~864,000 / value
-    let cpu_val = read_ec_word(file, REG_CPU_FAN_SPEED_HIGH, REG_CPU_FAN_SPEED_LOW)
-        .map_err(|e| e.to_string())?;
-
-    let cpu_fan_speed = if cpu_val > 0 {
-        (864000 / cpu_val as u32) as u16
-    } else {
-        0
-    };
-
-    // GPU Fan (0xCE/0xCF) appears to be raw RPM
-    let gpu_fan_speed = read_ec_word(file, REG_GPU_FAN_SPEED_HIGH, REG_GPU_FAN_SPEED_LOW)
-        .map_err(|e| e.to_string())?;
-
     let cooler_boost_reg = read_ec_byte(file, REG_COOLER_BOOST).map_err(|e| e.to_string())?;
     let cooler_boost = (cooler_boost_reg & COOLER_BOOST_BIT) != 0;
 
     Ok(Status {
         cpu_temp,
         gpu_temp,
-        cpu_fan_speed,
-        gpu_fan_speed,
         cooler_boost,
     })
 }
