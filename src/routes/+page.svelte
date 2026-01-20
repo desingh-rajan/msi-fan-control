@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
 
   import logo from "$lib/assets/logo.png";
+  import "./page.css";
 
   interface FanStatus {
     cpu_temp: number;
@@ -149,6 +150,15 @@
       </button>
     </div>
   </header>
+
+  {#if error}
+    <div
+      class="bg-red-500/10 border-b border-red-500/20 px-8 py-2 text-xs text-red-400"
+    >
+      <span class="font-bold">ERROR:</span>
+      {error}
+    </div>
+  {/if}
 
   <!-- Main Content -->
   <main class="flex-1 overflow-y-auto p-8 max-w-6xl mx-auto w-full">
@@ -299,116 +309,3 @@
     </div>
   </footer>
 </div>
-
-<style>
-  :global(:root) {
-    --bg-deep: #0a0b10;
-    --surface: #16181d;
-    --surface-accent: #1f2229;
-    --accent-primary: #ff4d4d;
-    --accent-secondary: #4d94ff;
-  }
-
-  /* Glassmorphism */
-  .glass-card {
-    background: rgba(22, 24, 29, 0.7);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .glass-card:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-  }
-
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #10b981;
-    box-shadow: 0 0 12px #10b981;
-  }
-
-  /* Scrollbars */
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: var(--bg-deep);
-  }
-  ::-webkit-scrollbar-thumb {
-    background: var(--surface-accent);
-    border-radius: 10px;
-  }
-
-  /* Toggle Switch */
-  .toggle-bg:after {
-    content: "";
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    background: white;
-    border-radius: 99px;
-    height: 20px;
-    width: 20px;
-    transition: 0.3s;
-  }
-  .toggle-checkbox:checked + .toggle-bg:after {
-    transform: translateX(24px);
-  }
-  .toggle-checkbox:checked + .toggle-bg {
-    background-color: var(--accent-primary);
-  }
-
-  /* Loader */
-  .loader-bar {
-    width: 200px;
-    height: 2px;
-    background: var(--surface-accent);
-    position: relative;
-    overflow: hidden;
-    border-radius: 4px;
-  }
-  .loader-progress {
-    position: absolute;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--accent-secondary),
-      transparent
-    );
-    animation: progress-move 1.5s infinite linear;
-  }
-  @keyframes progress-move {
-    0% {
-      left: -100%;
-    }
-    100% {
-      left: 100%;
-    }
-  }
-  .loading-logo {
-    width: 80px;
-    height: 80px;
-    margin-bottom: 2rem;
-    animation: pulse-ring 2s infinite ease-in-out;
-  }
-  @keyframes pulse-ring {
-    0% {
-      transform: scale(0.95);
-      opacity: 0.5;
-    }
-    50% {
-      transform: scale(1.05);
-      opacity: 1;
-    }
-    100% {
-      transform: scale(0.95);
-      opacity: 0.5;
-    }
-  }
-</style>
