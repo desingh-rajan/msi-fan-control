@@ -20,8 +20,11 @@ This project specifically targets the **Cooler Boost** functionality.
 
 ## Features
 - **Real-time Temperature Monitoring**: Displays CPU and GPU temperatures.
+- **Real-time Fan Speed Display**: Shows CPU and GPU fan speeds (RPM).
 - **Cooler Boost Toggle**: Manually turn on/off the maximum fan speed mode.
-- **Modern UI**: Clean, glassmorphism-inspired interface.
+- **Single Instance**: Only one app window runs at a time - launching again focuses the existing window.
+- **Password-Free Operation**: No password prompts after installation (Polkit policy bundled automatically).
+- **Modern UI**: Clean, glassmorphism-inspired interface with animated fan visuals.
 - **System Tray**: Minimize to tray for background monitoring.
 
 ## Roadmap
@@ -66,17 +69,21 @@ echo "options ec_sys write_support=1" | sudo tee /etc/modprobe.d/ec_sys.conf
 
 ## Installation
 
-### From .deb (Debian/Ubuntu)
+Download the latest release from [GitHub Releases](https://github.com/desingh-rajan/msi-fan-control/releases).
+
+### From .deb (Debian/Ubuntu) - Recommended
 
 ```bash
-sudo dpkg -i msi-fan-control_0.1.0_amd64.deb
+sudo dpkg -i msi-fan-control_0.3.2_amd64.deb
 ```
+
+**No additional setup required!** The installer automatically configures permissions. Just launch the app from your application menu.
 
 ### From AppImage
 
 ```bash
-chmod +x msi-fan-control_0.1.0_amd64.AppImage
-./msi-fan-control_0.1.0_amd64.AppImage
+chmod +x msi-fan-control_0.3.2_amd64.AppImage
+./msi-fan-control_0.3.2_amd64.AppImage
 ```
 
 ## How It Works
