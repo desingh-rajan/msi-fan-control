@@ -78,9 +78,18 @@ fn get_status(file: &mut File) -> Result<Status, String> {
     let gpu_temp = read_ec_byte(file, REG_GPU_TEMP).map_err(|e| e.to_string())?;
 
     // Read real RPM from tachometer registers
-    let cpu_fan_speed = read_ec_word(file, REG_CPU_FAN_SPEED_HIGH, REG_CPU_FAN_SPEED_LOW)
+    // CPU Fan (0xCC/0xCD) appears to be a period counter (inversely proportional to RPM)
+    // Formula derived empirically: RPM = ~864,000 / value
+    let cpu_val = read_ec_word(file, REG_CPU_FAN_SPEED_HIGH, REG_CPU_FAN_SPEED_LOW)
         .map_err(|e| e.to_string())?;
 
+    let cpu_fan_speed = if cpu_val > 0 {
+        (864000 / cpu_val as u32) as u16
+    } else {
+        0
+    };
+
+    // GPU Fan (0xCE/0xCF) appears to be raw RPM
     let gpu_fan_speed = read_ec_word(file, REG_GPU_FAN_SPEED_HIGH, REG_GPU_FAN_SPEED_LOW)
         .map_err(|e| e.to_string())?;
 
