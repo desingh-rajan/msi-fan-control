@@ -2,39 +2,41 @@
 
 A Tauri-based fan control utility for MSI laptops running Linux.
 
+
 ![MSI Fan Control](/src-tauri/icons/128x128.png)
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/app-dark.png" width="45%" alt="Dark Mode" />
+  <img src="screenshots/app-light.png" width="45%" alt="Light Mode" />
+</p>
 
 ![Status](https://img.shields.io/badge/status-MVP-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
-## MSI Fan Control (POC)
+## MSI Fan Control
 
-A Proof of Concept (POC) application to control MSI laptop fans on Linux (specifically Ubuntu).
+A dedicated utility to control MSI laptop fans on Linux (specifically Ubuntu).
 
 ## Motivation
 I created this tool because I bought an MSI laptop primarily for gaming, but I also use it heavily for web development work (Docker, Node.js, etc.). On Windows, MSI Dragon Center manages cooling, but there is no official support for Linux. I needed a way to manually toggle "Cooler Boost" (max fan speed) to manage heat during intense workloads.
 
 This project specifically targets the **Cooler Boost** functionality.
-> **Note:** Previous versions attempted to display real-time fan speeds (RPM), but this feature proved too flaky and unreliable, so it has been removed to focus on the core functionality that works.
+
 
 ## Features
 - **Real-time Temperature Monitoring**: Displays CPU and GPU temperatures.
-- **Real-time Fan Speed Display**: Shows CPU and GPU fan speeds (RPM).
+- **Real-time Fan Speed Monitoring**: Accurate RPM readings for both CPU and GPU fans.
 - **Cooler Boost Toggle**: Manually turn on/off the maximum fan speed mode.
-- **Single Instance**: Only one app window runs at a time - launching again focuses the existing window.
-- **Password-Free Operation**: No password prompts after installation (Polkit policy bundled automatically).
-- **Modern UI**: Clean, glassmorphism-inspired interface with animated fan visuals.
+- **Immersive UI**: Fully transparent, glassmorphism-based design with a dynamic "Fire & Ice" gradient theme.
+- **Password-Free Operation**: Runs securely without password prompts after installation (Polkit policy bundled).
+- **Single Instance**: Optimized to run as a single instance with window focus handling.
 - **System Tray**: Minimize to tray for background monitoring.
 
 ## Roadmap
 
-- **Custom Fan Curves** - Advanced fan speed profile customization
-- **Intelligent Profile Switching** - Automated profile adjustments based on
-  power state (AC/Battery)
-- **Telemetry & Analytics** - Visual temperature and performance history
-- **Enhanced System Integration** - Expanded tray options and system
-  notifications
 - **Extended Hardware Support** - Support for additional MSI laptop models
 
 ## Supported Models
@@ -74,7 +76,7 @@ Download the latest release from [GitHub Releases](https://github.com/desingh-ra
 ### From .deb (Debian/Ubuntu) - Recommended
 
 ```bash
-sudo dpkg -i msi-fan-control_0.3.2_amd64.deb
+sudo dpkg -i msi-fan-control_0.3.3_amd64.deb
 ```
 
 **No additional setup required!** The installer automatically configures permissions. Just launch the app from your application menu.
@@ -82,8 +84,8 @@ sudo dpkg -i msi-fan-control_0.3.2_amd64.deb
 ### From AppImage
 
 ```bash
-chmod +x msi-fan-control_0.3.2_amd64.AppImage
-./msi-fan-control_0.3.2_amd64.AppImage
+chmod +x msi-fan-control_0.3.3_amd64.AppImage
+./msi-fan-control_0.3.3_amd64.AppImage
 ```
 
 ## How It Works
@@ -141,6 +143,9 @@ cp src-tauri/binaries/msi-sidecar/target/release/msi-sidecar \
    src-tauri/binaries/msi-sidecar-x86_64-unknown-linux-gnu
 
 # Run in development mode
+# First, set up permissions for the dev binary:
+./scripts/setup-permissions.sh
+
 npm run tauri dev
 
 # Build for production
