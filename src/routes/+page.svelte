@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getVersion } from "@tauri-apps/api/app";
 
   import logo from "$lib/assets/logo.png";
   import "./page.css";
@@ -24,6 +25,7 @@
   let error: string | null = null;
   let pollInterval: any;
   let initialLoading = true;
+  let appVersion = "";
 
   async function connect() {
     try {
@@ -36,14 +38,40 @@
   }
 
   function startPolling() {
+    // Clear existing interval if any to prevent duplicates
+    if (pollInterval) clearInterval(pollInterval);
+
     pollInterval = setInterval(async () => {
       try {
         status = await invoke<FanStatus>("get_status");
         error = null;
       } catch (e) {
         console.error("Poll error:", e);
+        // Don't set error string here to avoid flashing error on every transient failure
+        // The UI will show "Connecting..." if status becomes stale (optional improvement)
       }
     }, 2000);
+  }
+
+  async function refresh() {
+    loading = true;
+    error = null;
+    try {
+      // First try to just get status
+      status = await invoke<FanStatus>("get_status");
+      // If successful, restart polling to be sure
+      startPolling();
+    } catch (e) {
+      console.warn("Refresh failed, attempting full reconnect:", e);
+      // If simple fetch failed, try full reconnect
+      await connect();
+    } finally {
+      loading = false;
+      // Add a small delay for visual feedback if needed, but not strictly necessary
+      setTimeout(() => {
+        initialLoading = false;
+      }, 500);
+    }
   }
 
   async function toggleCoolerBoost(e: Event) {
@@ -116,6 +144,7 @@
     }
 
     loading = false;
+    appVersion = await getVersion();
   });
 
   onDestroy(() => {
@@ -134,21 +163,32 @@
   {#if initialLoading}
     <div
       id="loader-screen"
-      class="fixed inset-0 z-50 bg-[#0a0b10] flex flex-col items-center justify-center transition-all duration-700"
+      class="fixed inset-0 z-50 bg-[#0a0b10]/95 backdrop-blur-xl flex flex-col items-center justify-center transition-all duration-700"
     >
       <img
         src={logo}
         alt="Logo"
-        class="loading-logo w-32 h-32 mb-8 object-contain"
+        class="loading-logo w-48 h-48 mb-6 object-contain drop-shadow-[0_0_25px_rgba(56,189,248,0.3)]"
       />
-      <div
-        class="text-xs uppercase tracking-[0.3em] text-blue-400 mb-4 font-semibold"
-      >
-        Initializing System Diagnostics
+
+      <div class="text-xl font-bold tracking-tight text-white mb-2">
+        MSI Fan Control
       </div>
-      <div class="loader-bar"><div class="loader-progress"></div></div>
-      <div class="mt-8 text-[10px] text-slate-500 uppercase tracking-widest">
-        Hardware Interface Ready
+
+      <div
+        class="text-sm text-cyan-400 font-medium tracking-wide animate-pulse mb-8"
+      >
+        Preparing to chill the beast...
+      </div>
+
+      <div class="loader-bar w-64 h-1 bg-white/10 rounded-full overflow-hidden">
+        <div
+          class="loader-progress bg-gradient-to-r from-transparent via-cyan-400 to-transparent"
+        ></div>
+      </div>
+
+      <div class="mt-4 text-[10px] text-slate-500 font-mono">
+        v{appVersion || "..."}
       </div>
     </div>
   {/if}
@@ -184,6 +224,17 @@
           >{status ? "System Optimal" : "Connecting..."}</span
         >
       </div>
+      <button
+        class="p-2 hover:bg-white/5 rounded-full transition-colors"
+        on:click={refresh}
+        title="Refresh Connection"
+      >
+        <span
+          class="material-symbols-outlined text-slate-400 text-xl {loading
+            ? 'animate-spin'
+            : ''}">refresh</span
+        >
+      </button>
       <button
         class="p-2 hover:bg-white/5 rounded-full transition-colors"
         on:click={toggleSettings}
@@ -249,7 +300,7 @@
         </div>
 
         <div class="mt-8 text-center text-[10px] text-slate-500 uppercase">
-          MSI Fan Control v0.3.1
+          MSI Fan Control v{appVersion}
         </div>
       </div>
     </div>
@@ -420,23 +471,4 @@
       </div>
     </div>
   </main>
-
-  <footer
-    class="h-10 border-t border-white/5 px-8 flex items-center justify-between shrink-0 bg-black/20"
-  >
-    <div class="flex gap-4">
-      <span class="text-[10px] text-slate-500 uppercase font-semibold"
-        >Ready</span
-      >
-    </div>
-    <div class="flex items-center gap-2">
-      <span class="material-symbols-outlined text-xs text-green-500"
-        >verified</span
-      >
-      <span
-        class="text-[10px] text-slate-500 uppercase font-semibold tracking-tighter"
-        >Hardware Authentication Secure</span
-      >
-    </div>
-  </footer>
 </div>
