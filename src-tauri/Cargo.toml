@@ -1,6 +1,6 @@
 [package]
 name = "msi-fan-control"
-version = "0.3.2"
+version = "0.3.4"
 description = "MSI Fan Control"
 authors = ["you"]
 edition = "2021"
