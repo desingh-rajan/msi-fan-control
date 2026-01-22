@@ -67,10 +67,6 @@
       await connect();
     } finally {
       loading = false;
-      // Add a small delay for visual feedback if needed, but not strictly necessary
-      setTimeout(() => {
-        initialLoading = false;
-      }, 500);
     }
   }
 
@@ -108,6 +104,15 @@
     localStorage.setItem("theme", theme);
   }
 
+  // Handle visibility change (sleep/wake, window focus)
+  function handleVisibilityChange() {
+    if (!document.hidden) {
+      // App became visible again, restart polling to ensure it's working
+      console.log("App visible again, restarting polling");
+      startPolling();
+    }
+  }
+
   onMount(async () => {
     // Load saved theme
     const savedTheme = localStorage.getItem("theme");
@@ -128,10 +133,6 @@
       }
     }
 
-    setTimeout(() => {
-      initialLoading = false;
-    }, 2000);
-
     try {
       // Parallel fetch
       const [hwInfo, _] = await Promise.all([
@@ -145,10 +146,19 @@
 
     loading = false;
     appVersion = await getVersion();
+
+    // Hide initial loading screen after everything is ready
+    setTimeout(() => {
+      initialLoading = false;
+    }, 500);
+
+    // Set up visibility change listener
+    document.addEventListener("visibilitychange", handleVisibilityChange);
   });
 
   onDestroy(() => {
     if (pollInterval) clearInterval(pollInterval);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
   });
 </script>
 
