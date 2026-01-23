@@ -102,50 +102,71 @@ fn send_command(child: &mut Child, cmd: &str) -> Result<(), String> {
 
 #[tauri::command]
 async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, String> {
-    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
+    let timeout_duration = Duration::from_secs(5);
+    
+    let state_clone = state.inner().clone();
+    let result = tokio::time::timeout(
+        timeout_duration,
+        tokio::task::spawn_blocking(move || {
+            let mut guard = state_clone.connection.lock().map_err(|e| e.to_string())?;
 
-    // Kill existing if any
-    if let Some(mut conn) = guard.take() {
-        let _ = conn.child.kill();
-        let _ = conn.child.wait();
-    }
+            // Kill existing if any
+            if let Some(mut conn) = guard.take() {
+                let _ = conn.child.kill();
+                let _ = conn.child.wait();
+            }
 
-    let sidecar_path = get_sidecar_path();
-    // eprintln!("Starting sidecar from: {}", sidecar_path);
+            let sidecar_path = get_sidecar_path();
+            // eprintln!("Starting sidecar from: {}", sidecar_path);
 
-    // Spawn with pkexec for privilege escalation
-    let mut child = Command::new("pkexec")
-        .arg(&sidecar_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to start sidecar: {}", e))?;
+            // Spawn with pkexec for privilege escalation
+            let mut child = Command::new("pkexec")
+                .arg(&sidecar_path)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to start sidecar: {}", e))?;
 
-    let stdout = child.stdout.take().ok_or("No stdout captured")?;
-    let mut reader = BufReader::new(stdout);
+            let stdout = child.stdout.take().ok_or("No stdout captured")?;
+            let mut reader = BufReader::new(stdout);
 
-    // Read initial status
-    let response = read_response(&mut reader)?;
+            // Read initial status
+            let response = read_response(&mut reader)?;
 
-    *guard = Some(SidecarConnection { child, reader });
+            *guard = Some(SidecarConnection { child, reader });
 
-    match response {
-        SidecarResponse::Status {
-            cpu_temp,
-            gpu_temp,
-            fan1_rpm,
-            fan2_rpm,
-            cooler_boost,
-        } => Ok(FanStatus {
-            cpu_temp,
-            gpu_temp,
-            fan1_rpm,
-            fan2_rpm,
-            cooler_boost,
-        }),
-        SidecarResponse::Error { message } => Err(message),
-        _ => Err("Unexpected response".to_string()),
+            match response {
+                SidecarResponse::Status {
+                    cpu_temp,
+                    gpu_temp,
+                    fan1_rpm,
+                    fan2_rpm,
+                    cooler_boost,
+                } => Ok(FanStatus {
+                    cpu_temp,
+                    gpu_temp,
+                    fan1_rpm,
+                    fan2_rpm,
+                    cooler_boost,
+                }),
+                SidecarResponse::Error { message } => Err(message),
+                _ => Err("Unexpected response".to_string()),
+            }
+        })
+    ).await;
+
+    match result {
+        Ok(Ok(status_result)) => status_result,
+        Ok(Err(e)) => Err(format!("Task failed: {}", e)),
+        Err(_) => {
+            // Timeout occurred - kill any spawned process
+            let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
+            if let Some(mut conn) = guard.take() {
+                let _ = conn.child.kill();
+            }
+            Err("Sidecar startup timeout - connection failed".to_string())
+        }
     }
 }
 
@@ -217,21 +238,42 @@ async fn get_status(state: State<'_, SidecarState>) -> Result<FanStatus, String>
 
 #[tauri::command]
 async fn set_cooler_boost(state: State<'_, SidecarState>, enabled: bool) -> Result<String, String> {
-    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
+    let timeout_duration = Duration::from_secs(3);
+    
+    let state_clone = state.inner().clone();
+    let result = tokio::time::timeout(
+        timeout_duration,
+        tokio::task::spawn_blocking(move || {
+            let mut guard = state_clone.connection.lock().map_err(|e| e.to_string())?;
 
-    let conn = guard.as_mut().ok_or("Sidecar not running")?;
+            let conn = guard.as_mut().ok_or("Sidecar not running")?;
 
-    let cmd = format!(
-        r#"{{"cmd":"set_cooler_boost","data":{{"enabled":{}}}}}"#,
-        enabled
-    );
-    send_command(&mut conn.child, &cmd)?;
-    let response = read_response(&mut conn.reader)?;
+            let cmd = format!(
+                r#"{{"cmd":"set_cooler_boost","data":{{"enabled":{}}}}}"#,
+                enabled
+            );
+            send_command(&mut conn.child, &cmd)?;
+            let response = read_response(&mut conn.reader)?;
 
-    match response {
-        SidecarResponse::Ok { message } => Ok(message),
-        SidecarResponse::Error { message } => Err(message),
-        _ => Err("Unexpected response".to_string()),
+            match response {
+                SidecarResponse::Ok { message } => Ok(message),
+                SidecarResponse::Error { message } => Err(message),
+                _ => Err("Unexpected response".to_string()),
+            }
+        })
+    ).await;
+
+    match result {
+        Ok(Ok(msg_result)) => msg_result,
+        Ok(Err(e)) => Err(format!("Task failed: {}", e)),
+        Err(_) => {
+            // Timeout occurred - kill the connection
+            let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
+            if let Some(mut conn) = guard.take() {
+                let _ = conn.child.kill();
+            }
+            Err("Cooler boost command timeout - please reconnect".to_string())
+        }
     }
 }
 
