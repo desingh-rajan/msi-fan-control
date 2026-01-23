@@ -23,34 +23,61 @@
   let hardware: HardwareInfo | null = null;
   let loading = true;
   let error: string | null = null;
-  let pollInterval: any;
+  // pollTimer is defined below with startPolling
   let initialLoading = true;
   let appVersion = "";
 
   async function connect() {
     try {
       status = await invoke<FanStatus>("start_sidecar");
-      startPolling();
     } catch (e) {
       error = String(e);
       console.error("Connection failed:", e);
+      throw e; // Propagate so caller feels the pain
     }
   }
 
-  function startPolling() {
-    // Clear existing interval if any to prevent duplicates
-    if (pollInterval) clearInterval(pollInterval);
+  let pollTimer: any;
+  let isPolling = false;
 
-    pollInterval = setInterval(async () => {
+  async function startPolling() {
+    if (isPolling) return;
+    isPolling = true;
+
+    const poll = async () => {
       try {
         status = await invoke<FanStatus>("get_status");
         error = null;
       } catch (e) {
-        console.error("Poll error:", e);
-        // Don't set error string here to avoid flashing error on every transient failure
-        // The UI will show "Connecting..." if status becomes stale (optional improvement)
+        console.warn("Poll error:", e);
+        // If error looks like calling sidecar failed, try to reconnect
+        // "Sidecar not running" is our explicit error from lib.rs
+        if (
+          String(e).includes("Sidecar not running") ||
+          String(e).includes("Broken pipe")
+        ) {
+          console.log("Attempting auto-reconnect...");
+          try {
+            await connect();
+          } catch (connErr) {
+            console.error("Auto-reconnect failed:", connErr);
+          }
+        }
       }
-    }, 2000);
+
+      // Schedule next poll - recursive approach ensures no overlap
+      // and waits for current poll to finish before scheduling next
+      if (isPolling) {
+        pollTimer = setTimeout(poll, 2000);
+      }
+    };
+
+    poll();
+  }
+
+  function stopPolling() {
+    isPolling = false;
+    if (pollTimer) clearTimeout(pollTimer);
   }
 
   async function refresh() {
@@ -59,12 +86,18 @@
     try {
       // First try to just get status
       status = await invoke<FanStatus>("get_status");
-      // If successful, restart polling to be sure
+      // Ensure polling is active
       startPolling();
     } catch (e) {
       console.warn("Refresh failed, attempting full reconnect:", e);
       // If simple fetch failed, try full reconnect
-      await connect();
+      try {
+        await connect();
+        // If connect worked, ensure polling is on
+        startPolling();
+      } catch (connErr) {
+        // user will see error state
+      }
     } finally {
       loading = false;
     }
@@ -137,9 +170,13 @@
       // Parallel fetch
       const [hwInfo, _] = await Promise.all([
         invoke<HardwareInfo>("get_hardware_info").catch((e) => null),
-        connect(),
+        connect().catch(() => {}), // catch here so Promise.all doesn't fail
       ]);
       if (hwInfo) hardware = hwInfo as HardwareInfo;
+
+      // Start polling loop regardless of initial connect success
+      // The poll loop handles reconnection
+      startPolling();
     } catch (e) {
       console.error(e);
     }
@@ -154,11 +191,13 @@
 
     // Set up visibility change listener
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
   });
 
   onDestroy(() => {
-    if (pollInterval) clearInterval(pollInterval);
+    stopPolling();
     document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("focus", handleVisibilityChange);
   });
 </script>
 

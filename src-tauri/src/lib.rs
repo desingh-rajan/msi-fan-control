@@ -6,8 +6,13 @@ use sysinfo::System;
 use tauri::{Manager, State};
 
 // State to track the sidecar process
+struct SidecarConnection {
+    child: Child,
+    reader: BufReader<std::process::ChildStdout>,
+}
+
 struct SidecarState {
-    child: Mutex<Option<Child>>,
+    connection: Mutex<Option<SidecarConnection>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -70,9 +75,9 @@ fn get_sidecar_path() -> String {
     "msi-sidecar".to_string()
 }
 
-fn read_response(child: &mut Child) -> Result<SidecarResponse, String> {
-    let stdout = child.stdout.as_mut().ok_or("No stdout")?;
-    let mut reader = BufReader::new(stdout);
+fn read_response(
+    reader: &mut BufReader<std::process::ChildStdout>,
+) -> Result<SidecarResponse, String> {
     let mut line = String::new();
 
     reader
@@ -95,12 +100,12 @@ fn send_command(child: &mut Child, cmd: &str) -> Result<(), String> {
 
 #[tauri::command]
 async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, String> {
-    let mut child_guard = state.child.lock().map_err(|e| e.to_string())?;
+    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
 
     // Kill existing if any
-    if let Some(ref mut child) = *child_guard {
-        let _ = child.kill();
-        let _ = child.wait();
+    if let Some(mut conn) = guard.take() {
+        let _ = conn.child.kill();
+        let _ = conn.child.wait();
     }
 
     let sidecar_path = get_sidecar_path();
@@ -115,10 +120,13 @@ async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, Stri
         .spawn()
         .map_err(|e| format!("Failed to start sidecar: {}", e))?;
 
-    // Read initial status
-    let response = read_response(&mut child)?;
+    let stdout = child.stdout.take().ok_or("No stdout captured")?;
+    let mut reader = BufReader::new(stdout);
 
-    *child_guard = Some(child);
+    // Read initial status
+    let response = read_response(&mut reader)?;
+
+    *guard = Some(SidecarConnection { child, reader });
 
     match response {
         SidecarResponse::Status {
@@ -141,29 +149,28 @@ async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, Stri
 
 #[tauri::command]
 async fn stop_sidecar(state: State<'_, SidecarState>) -> Result<String, String> {
-    let mut child_guard = state.child.lock().map_err(|e| e.to_string())?;
+    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
 
-    if let Some(ref mut child) = *child_guard {
+    if let Some(mut conn) = guard.take() {
         // Send exit command
-        let _ = send_command(child, r#"{"cmd":"exit"}"#);
-        let _ = child.kill();
-        let _ = child.wait();
+        let _ = send_command(&mut conn.child, r#"{"cmd":"exit"}"#);
+        let _ = conn.child.kill();
+        let _ = conn.child.wait();
     }
 
-    *child_guard = None;
     Ok("Sidecar stopped".to_string())
 }
 
 #[tauri::command]
 async fn get_status(state: State<'_, SidecarState>) -> Result<FanStatus, String> {
-    let mut child_guard = state.child.lock().map_err(|e| e.to_string())?;
+    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
 
-    let child = child_guard
+    let conn = guard
         .as_mut()
         .ok_or("Sidecar not running. Click Connect first.")?;
 
-    send_command(child, r#"{"cmd":"get_status"}"#)?;
-    let response = read_response(child)?;
+    send_command(&mut conn.child, r#"{"cmd":"get_status"}"#)?;
+    let response = read_response(&mut conn.reader)?;
 
     match response {
         SidecarResponse::Status {
@@ -186,16 +193,16 @@ async fn get_status(state: State<'_, SidecarState>) -> Result<FanStatus, String>
 
 #[tauri::command]
 async fn set_cooler_boost(state: State<'_, SidecarState>, enabled: bool) -> Result<String, String> {
-    let mut child_guard = state.child.lock().map_err(|e| e.to_string())?;
+    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
 
-    let child = child_guard.as_mut().ok_or("Sidecar not running")?;
+    let conn = guard.as_mut().ok_or("Sidecar not running")?;
 
     let cmd = format!(
         r#"{{"cmd":"set_cooler_boost","data":{{"enabled":{}}}}}"#,
         enabled
     );
-    send_command(child, &cmd)?;
-    let response = read_response(child)?;
+    send_command(&mut conn.child, &cmd)?;
+    let response = read_response(&mut conn.reader)?;
 
     match response {
         SidecarResponse::Ok { message } => Ok(message),
@@ -279,7 +286,7 @@ pub fn run() {
                 .set_focus();
         }))
         .manage(SidecarState {
-            child: Mutex::new(None),
+            connection: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             start_sidecar,
