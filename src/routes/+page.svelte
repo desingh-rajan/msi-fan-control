@@ -39,26 +39,32 @@
 
   let pollTimer: any;
   let isPolling = false;
+  let lastPollTime = 0;
 
   async function startPolling() {
     if (isPolling) return;
     isPolling = true;
 
     const poll = async () => {
+      if (!isPolling) return;
+
       try {
         status = await invoke<FanStatus>("get_status");
         error = null;
+        lastPollTime = Date.now();
       } catch (e) {
         console.warn("Poll error:", e);
         // If error looks like calling sidecar failed, try to reconnect
         // "Sidecar not running" is our explicit error from lib.rs
         if (
           String(e).includes("Sidecar not running") ||
-          String(e).includes("Broken pipe")
+          String(e).includes("Broken pipe") ||
+          String(e).includes("timeout")
         ) {
           console.log("Attempting auto-reconnect...");
           try {
             await connect();
+            lastPollTime = Date.now();
           } catch (connErr) {
             console.error("Auto-reconnect failed:", connErr);
           }
@@ -83,21 +89,19 @@
   async function refresh() {
     loading = true;
     error = null;
+    
+    // Stop polling first to clear any hung state
+    stopPolling();
+    
     try {
-      // First try to just get status
-      status = await invoke<FanStatus>("get_status");
-      // Ensure polling is active
+      // Force a full reconnect on refresh
+      console.log("Refresh: forcing reconnect...");
+      await connect();
+      // If connect worked, start polling
       startPolling();
     } catch (e) {
-      console.warn("Refresh failed, attempting full reconnect:", e);
-      // If simple fetch failed, try full reconnect
-      try {
-        await connect();
-        // If connect worked, ensure polling is on
-        startPolling();
-      } catch (connErr) {
-        // user will see error state
-      }
+      console.error("Refresh reconnect failed:", e);
+      error = String(e);
     } finally {
       loading = false;
     }
@@ -140,9 +144,31 @@
   // Handle visibility change (sleep/wake, window focus)
   function handleVisibilityChange() {
     if (!document.hidden) {
-      // App became visible again, restart polling to ensure it's working
-      console.log("App visible again, restarting polling");
-      startPolling();
+      // App became visible again
+      console.log("App visible again, checking poll health");
+      
+      // Check if polling is stale (no update in last 10 seconds)
+      const timeSinceLastPoll = Date.now() - lastPollTime;
+      const isStale = timeSinceLastPoll > 10000;
+      
+      if (isStale || !isPolling) {
+        console.log("Polling appears stale or stopped, forcing reconnect");
+        stopPolling();
+        // Force reconnect after visibility change if polling is stale
+        connect()
+          .then(() => {
+            console.log("Reconnected successfully on visibility change");
+            startPolling();
+          })
+          .catch((e) => {
+            console.error("Failed to reconnect on visibility change:", e);
+            // Try to start polling anyway - it will attempt reconnect
+            startPolling();
+          });
+      } else {
+        // Polling is healthy, just ensure it's running
+        startPolling();
+      }
     }
   }
 

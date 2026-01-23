@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 use sysinfo::System;
 use tauri::{Manager, State};
 
@@ -11,8 +12,9 @@ struct SidecarConnection {
     reader: BufReader<std::process::ChildStdout>,
 }
 
+#[derive(Clone)]
 struct SidecarState {
-    connection: Mutex<Option<SidecarConnection>>,
+    connection: std::sync::Arc<Mutex<Option<SidecarConnection>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -163,31 +165,53 @@ async fn stop_sidecar(state: State<'_, SidecarState>) -> Result<String, String> 
 
 #[tauri::command]
 async fn get_status(state: State<'_, SidecarState>) -> Result<FanStatus, String> {
-    let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
+    // Spawn blocking task with timeout to prevent hangs
+    let timeout_duration = Duration::from_secs(3);
+    
+    let state_clone = state.inner().clone();
+    let result = tokio::time::timeout(
+        timeout_duration,
+        tokio::task::spawn_blocking(move || {
+            let mut guard = state_clone.connection.lock().map_err(|e| e.to_string())?;
 
-    let conn = guard
-        .as_mut()
-        .ok_or("Sidecar not running. Click Connect first.")?;
+            let conn = guard
+                .as_mut()
+                .ok_or("Sidecar not running. Click Connect first.")?;
 
-    send_command(&mut conn.child, r#"{"cmd":"get_status"}"#)?;
-    let response = read_response(&mut conn.reader)?;
+            send_command(&mut conn.child, r#"{"cmd":"get_status"}"#)?;
+            let response = read_response(&mut conn.reader)?;
 
-    match response {
-        SidecarResponse::Status {
-            cpu_temp,
-            gpu_temp,
-            fan1_rpm,
-            fan2_rpm,
-            cooler_boost,
-        } => Ok(FanStatus {
-            cpu_temp,
-            gpu_temp,
-            fan1_rpm,
-            fan2_rpm,
-            cooler_boost,
-        }),
-        SidecarResponse::Error { message } => Err(message),
-        _ => Err("Unexpected response".to_string()),
+            match response {
+                SidecarResponse::Status {
+                    cpu_temp,
+                    gpu_temp,
+                    fan1_rpm,
+                    fan2_rpm,
+                    cooler_boost,
+                } => Ok(FanStatus {
+                    cpu_temp,
+                    gpu_temp,
+                    fan1_rpm,
+                    fan2_rpm,
+                    cooler_boost,
+                }),
+                SidecarResponse::Error { message } => Err(message),
+                _ => Err("Unexpected response".to_string()),
+            }
+        })
+    ).await;
+
+    match result {
+        Ok(Ok(status_result)) => status_result,
+        Ok(Err(e)) => Err(format!("Task failed: {}", e)),
+        Err(_) => {
+            // Timeout occurred - kill the connection and force reconnect
+            let mut guard = state.connection.lock().map_err(|e| e.to_string())?;
+            if let Some(mut conn) = guard.take() {
+                let _ = conn.child.kill();
+            }
+            Err("Sidecar connection timeout - please reconnect".to_string())
+        }
     }
 }
 
@@ -286,7 +310,7 @@ pub fn run() {
                 .set_focus();
         }))
         .manage(SidecarState {
-            connection: Mutex::new(None),
+            connection: std::sync::Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             start_sidecar,
