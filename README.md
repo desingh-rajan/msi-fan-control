@@ -21,7 +21,7 @@ A dedicated utility to control MSI laptop fans on Linux (specifically Ubuntu), f
 
 ---
 
-## 📸 Gallery
+## Gallery
 
 <p align="center">
   <img src="screenshots/app-dark-home.png" width="100%" alt="Dark Mode Home" />
@@ -34,30 +34,30 @@ A dedicated utility to control MSI laptop fans on Linux (specifically Ubuntu), f
 
 ---
 
-## ✨ Features
+## Features
 
-- **🔥 Real-time Temperature Monitoring**: Monitor CPU and GPU temperatures instantly.
-- **⚡ Real-time Fan Speed Monitoring**: Accurate RPM readings for both CPU and GPU fans.
-- **🚀 Cooler Boost Toggle**: One-click activation of maximum fan speed mode for intense gaming or heavy workloads.
-- **📈 CPU Clock Speed Monitoring**: View global and per-core clock speeds in real-time.
-- **💾 Memory Usage**: Track RAM and Swap usage with visual progress bars.
-- **🎨 Immersive UI**: Fully transparent, glassmorphism-based design with a dynamic "Fire & Ice" gradient theme.
-- **🔒 Password-Free Operation**: Runs securely without password prompts after installation (Polkit policy bundled).
-- **🖥️ System Tray Support**: Minimize to tray for unobtrusive background monitoring.
-- **📝 Single Instance**: Optimized to run as a single instance with smart window focus handling.
+- **Real-time Temperature Monitoring**: Monitor CPU and GPU temperatures instantly.
+- **Real-time Fan Speed Monitoring**: Accurate RPM readings for both CPU and GPU fans.
+- **Cooler Boost Toggle**: One-click activation of maximum fan speed mode for intense gaming or heavy workloads.
+- **CPU Clock Speed Monitoring**: View global and per-core clock speeds in real-time.
+- **Memory Usage**: Track RAM and Swap usage with visual progress bars.
+- **Immersive UI**: Fully transparent, glassmorphism-based design with a dynamic "Fire & Ice" gradient theme.
+- **Password-Free Operation**: Runs securely without password prompts after installation (Polkit policy bundled).
+- **System Tray Support**: Minimize to tray for unobtrusive background monitoring.
+- **Single Instance**: Optimized to run as a single instance with smart window focus handling.
 
-## 🎯 Motivation
+## Motivation
 
 I created this tool because I bought an MSI laptop primarily for gaming, but I also use it heavily for web development work (Docker, Node.js, etc.). On Windows, MSI Dragon Center manages cooling, but there is no official support for Linux. I needed a way to manually toggle "Cooler Boost" (max fan speed) to manage heat during intense workloads.
 
 **This project specifically targets the Cooler Boost functionality.**
 
-## 💻 Supported Models
+## Supported Models
 
 - **MSI GF65 Thin 10SDR** (Main development target)
 - _More models planned for future releases_
 
-## 🛠️ Installation
+## Installation
 
 Download the latest release from [GitHub Releases](https://github.com/desingh-rajan/msi-fan-control/releases).
 
@@ -76,7 +76,7 @@ chmod +x msi-fan-control_0.3.3_amd64.AppImage
 ./msi-fan-control_0.3.3_amd64.AppImage
 ```
 
-## ⚙️ How It Works
+## How It Works
 
 This application separates the UI (User Space) from the hardware control (Root Space) using a secure sidecar pattern.
 
@@ -89,7 +89,7 @@ graph TD
 
 The GUI runs as a normal user. Only the small `msi-sidecar` binary runs as root, authorized via standard Linux Polkit.
 
-## 🐛 Known Issues & Troubleshooting
+## Known Issues & Troubleshooting
 
 ### "Connecting..." Stuck / Permission Denied
 If the application gets stuck on "Connecting..." or shows `Permission denied` errors, it likely means the `ec_sys` kernel module was unloaded (common after kernel updates).
@@ -105,7 +105,7 @@ echo "ec_sys" | sudo tee /etc/modules-load.d/ec_sys.conf
 echo "options ec_sys write_support=1" | sudo tee /etc/modprobe.d/ec_sys.conf
 ```
 
-## 👨‍💻 Development
+## Development
 
 ### Requirements
 - Node.js 20+
@@ -141,8 +141,8 @@ npm run tauri dev
 npm run tauri build
 ```
 
-## 📜 Credits
+## Credits
 Core hardware control logic, including EC register offsets and RPM calculation formulas, was researched and adapted from the excellent [MControlCenter](https://github.com/dmitry-s93/MControlCenter) project by Dmitry Serov.
 
-## 📄 License
+## License
 MIT
