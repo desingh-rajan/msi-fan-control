@@ -17,10 +17,29 @@
   interface HardwareInfo {
     cpu_model: string;
     gpu_model: string;
+    memory_total: number;
+  }
+
+  interface SystemStats {
+    memory_used: number;
+    memory_total: number;
+    swap_used: number;
+    swap_total: number;
+    cpu_global_frequency: number;
+  }
+
+  interface CpuCoreDetail {
+    name: string;
+    frequency: number;
+    usage: number;
   }
 
   let status: FanStatus | null = null;
   let hardware: HardwareInfo | null = null;
+  let systemStats: SystemStats | null = null;
+  let cpuDetails: CpuCoreDetail[] = [];
+  let isCpuExpanded = false;
+
   let loading = true;
   let error: string | null = null;
   // pollTimer is defined below with startPolling
@@ -48,12 +67,20 @@
     const poll = async () => {
       if (!isPolling) return;
 
+      // 1. Fetch Fan Status (Critical - triggers reconnect logic)
       try {
         status = await invoke<FanStatus>("get_status");
-        error = null;
-        lastPollTime = Date.now();
+
+        // Reset connection error if successful
+        if (
+          error &&
+          (error.includes("Sidecar not running") ||
+            error.includes("Broken pipe"))
+        ) {
+          error = null;
+        }
       } catch (e) {
-        console.warn("Poll error:", e);
+        console.warn("Fan Poll error:", e);
         // If error looks like calling sidecar failed, try to reconnect
         // "Sidecar not running" is our explicit error from lib.rs
         if (
@@ -64,12 +91,29 @@
           console.log("Attempting auto-reconnect...");
           try {
             await connect();
-            lastPollTime = Date.now();
           } catch (connErr) {
             console.error("Auto-reconnect failed:", connErr);
+            error = String(connErr);
           }
+        } else {
+          error = String(e);
         }
       }
+
+      // 2. Fetch System Stats (Non-Critical - does not trigger reconnect)
+      try {
+        systemStats = await invoke<SystemStats>("get_system_stats");
+
+        // Fetch CPU details only if expanded (on-demand)
+        if (isCpuExpanded) {
+          cpuDetails = await invoke<CpuCoreDetail[]>("get_cpu_details");
+        }
+      } catch (e) {
+        // Just log, don't break the app or try to reconnect
+        console.warn("System Stats Poll warning:", e);
+      }
+
+      lastPollTime = Date.now();
 
       // Schedule next poll - recursive approach ensures no overlap
       // and waits for current poll to finish before scheduling next
@@ -89,19 +133,31 @@
   async function refresh() {
     loading = true;
     error = null;
-    
+
     // Stop polling first to clear any hung state
     stopPolling();
-    
+
     try {
-      // Force a full reconnect on refresh
-      console.log("Refresh: forcing reconnect...");
-      await connect();
-      // If connect worked, start polling
+      // Try to just get status first. If this works, we don't need to re-authenticate (sudo)
+      console.log("Refresh: checking status...");
+      status = await invoke<FanStatus>("get_status");
+
+      // If we got here, connection is fine. Just restart polling.
+      console.log("Refresh: Connection healthy, resuming polling.");
       startPolling();
     } catch (e) {
-      console.error("Refresh reconnect failed:", e);
-      error = String(e);
+      console.warn(
+        "Refresh: Connection check failed, forcing reconnect. Error:",
+        e,
+      );
+      // Only now do we force a full reconnect (which triggers password)
+      try {
+        await connect();
+        startPolling();
+      } catch (connErr) {
+        console.error("Refresh reconnect failed:", connErr);
+        error = String(connErr);
+      }
     } finally {
       loading = false;
     }
@@ -146,11 +202,11 @@
     if (!document.hidden) {
       // App became visible again
       console.log("App visible again, checking poll health");
-      
+
       // Check if polling is stale (no update in last 10 seconds)
       const timeSinceLastPoll = Date.now() - lastPollTime;
       const isStale = timeSinceLastPoll > 10000;
-      
+
       if (isStale || !isPolling) {
         console.log("Polling appears stale or stopped, forcing reconnect");
         stopPolling();
@@ -225,6 +281,42 @@
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("focus", handleVisibilityChange);
   });
+  /* FPS Counter Logic */
+  let showFps = false;
+  let fps = 0;
+  let fpsLoopId: number;
+
+  function startFpsLoop() {
+    let lastTime = performance.now();
+    let frames = 0;
+
+    function loop(now: number) {
+      frames++;
+      const elapsed = now - lastTime;
+
+      if (elapsed >= 1000) {
+        fps = Math.round((frames * 1000) / elapsed);
+        frames = 0;
+        lastTime = now;
+      }
+
+      if (showFps) {
+        fpsLoopId = requestAnimationFrame(loop);
+      }
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function toggleFps() {
+    showFps = !showFps;
+    if (showFps) {
+      startFpsLoop();
+    } else {
+      cancelAnimationFrame(fpsLoopId);
+    }
+    localStorage.setItem("show_fps", String(showFps));
+  }
 </script>
 
 <div
@@ -318,6 +410,13 @@
           >settings</span
         >
       </button>
+      {#if showFps}
+        <div
+          class="bg-black/40 px-3 py-1 rounded-full text-xs font-mono font-bold text-green-400 animate-fade-in border border-white/10"
+        >
+          {fps} FPS
+        </div>
+      {/if}
     </div>
   </header>
 
@@ -369,6 +468,30 @@
               class="sr-only toggle-checkbox"
               checked={theme === "light"}
               on:change={toggleTheme}
+            />
+            <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
+          </label>
+        </div>
+
+        <!-- FPS Toggle -->
+        <div
+          class="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 mt-4"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-green-400">speed</span>
+            <div>
+              <div class="text-sm font-bold">Show FPS</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                Performance Monitor
+              </div>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              class="sr-only toggle-checkbox"
+              checked={showFps}
+              on:change={toggleFps}
             />
             <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
           </label>
@@ -469,7 +592,7 @@
               class="text-xl font-bold truncate pr-4"
               title={hardware?.cpu_model}
             >
-              {hardware?.cpu_model ?? "Intializing..."}
+              {hardware?.cpu_model ?? "Initializing..."}
             </h3>
           </div>
           <span
@@ -545,5 +668,182 @@
         </div>
       </div>
     </div>
+
+    <!-- Performance Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 items-start">
+      <!-- CPU Clock Card -->
+      <div
+        class="glass-card rounded-2xl p-6 relative overflow-hidden group transition-all duration-300 min-h-[180px]"
+      >
+        <div
+          class="absolute top-0 left-0 w-1 h-full bg-cyan-500 opacity-50"
+        ></div>
+        <div class="flex justify-between items-start mb-4">
+          <div class="flex flex-col gap-1">
+            <span
+              class="text-xs text-slate-500 font-bold uppercase tracking-wider"
+              >Clock Speed</span
+            >
+            <div class="flex items-center gap-2">
+              <span
+                class="material-symbols-outlined text-cyan-500/50 group-hover:text-cyan-500 transition-colors"
+                >speed</span
+              >
+            </div>
+          </div>
+          <button
+            class="p-1 rounded-full hover:bg-white/10 transition-colors"
+            on:click={() => (isCpuExpanded = !isCpuExpanded)}
+            title={isCpuExpanded ? "Collapse" : "Expand for per-core details"}
+          >
+            <span
+              class="material-symbols-outlined text-slate-400 transform transition-transform duration-300"
+              class:rotate-180={isCpuExpanded}>expand_more</span
+            >
+          </button>
+        </div>
+
+        <div class="flex flex-col items-end mb-2">
+          <div class="flex items-baseline gap-2">
+            <span class="text-3xl font-extrabold tracking-tighter">
+              {systemStats
+                ? (systemStats.cpu_global_frequency / 1000).toFixed(2)
+                : "--"}
+            </span>
+            <span class="text-lg text-slate-500 font-light">GHz</span>
+          </div>
+          <span class="text-xs text-slate-500 uppercase">Global Frequency</span>
+        </div>
+
+        {#if isCpuExpanded}
+          <div class="mt-6 pt-4 border-t border-white/5 animate-fade-in">
+            <div
+              class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-3"
+            >
+              Logical Cores (Threads)
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {#each cpuDetails as core}
+                <div class="bg-white/5 rounded-lg p-2 text-center">
+                  <div class="text-[10px] text-slate-500 font-mono mb-1">
+                    {core.name}
+                  </div>
+                  <div class="text-sm font-bold text-cyan-400">
+                    {(core.frequency / 1000).toFixed(2)}
+                    <span class="text-[10px] text-zinc-500">GHz</span>
+                  </div>
+                  <div
+                    class="h-1 w-full bg-black/50 mt-1 rounded-full overflow-hidden"
+                  >
+                    <div
+                      class="h-full bg-cyan-500/50"
+                      style="width: {core.usage}%"
+                    ></div>
+                  </div>
+                </div>
+              {/each}
+              {#if cpuDetails.length === 0}
+                <div
+                  class="col-span-full text-center text-xs text-slate-500 p-2"
+                >
+                  Loading core info...
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- RAM Card -->
+      <div
+        class="glass-card rounded-2xl p-6 relative overflow-hidden group min-h-[180px]"
+      >
+        <div
+          class="absolute top-0 left-0 w-1 h-full bg-purple-500 opacity-50"
+        ></div>
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center gap-2">
+            <span
+              class="text-xs text-slate-500 font-bold uppercase tracking-wider"
+              >Memory</span
+            >
+            <span
+              class="material-symbols-outlined text-purple-500/50 group-hover:text-purple-500 transition-colors"
+              >memory</span
+            >
+          </div>
+        </div>
+
+        <div class="flex flex-col">
+          <div class="flex justify-between items-end mb-2">
+            <span class="text-2xl font-extrabold tracking-tighter">
+              {systemStats
+                ? (systemStats.memory_used / 1024 / 1024 / 1024).toFixed(1)
+                : "--"}
+            </span>
+            <div class="text-right">
+              <span class="text-xs text-slate-400 font-bold">
+                / {hardware
+                  ? (hardware.memory_total / 1024 / 1024 / 1024).toFixed(1)
+                  : "--"} GB
+              </span>
+            </div>
+          </div>
+
+          {#if systemStats && hardware}
+            {@const percent =
+              (systemStats.memory_used / hardware.memory_total) * 100}
+            <div
+              class="w-full h-1 bg-black/40 rounded-full overflow-hidden mb-1"
+            >
+              <div
+                class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                style="width: {percent}%"
+              ></div>
+            </div>
+            <div
+              class="flex justify-between text-[8px] text-slate-500 uppercase font-semibold mb-3"
+            >
+              <span>Used: {percent.toFixed(0)}%</span>
+              <span
+                >Free: {(
+                  (hardware.memory_total - systemStats.memory_used) /
+                  1024 /
+                  1024 /
+                  1024
+                ).toFixed(1)} GB</span
+              >
+            </div>
+
+            <!-- SWAP Memory -->
+            {@const swapPercent =
+              systemStats.swap_total > 0
+                ? (systemStats.swap_used / systemStats.swap_total) * 100
+                : 0}
+            <div class="flex justify-between items-end mb-1">
+              <span
+                class="text-[10px] text-slate-500 font-bold uppercase tracking-wider"
+                >Swap</span
+              >
+              <span class="text-[10px] text-slate-400 font-mono"
+                >{(systemStats.swap_used / 1024 / 1024 / 1024).toFixed(1)} / {(
+                  systemStats.swap_total /
+                  1024 /
+                  1024 /
+                  1024
+                ).toFixed(1)} GB</span
+              >
+            </div>
+            <div class="w-full h-1 bg-black/40 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-purple-500/50 transition-all duration-500"
+                style="width: {swapPercent}%"
+              ></div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
   </main>
 </div>
+```

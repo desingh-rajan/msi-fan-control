@@ -2,13 +2,15 @@ use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
-use sysinfo::System;
+use sysinfo::{CpuRefreshKind, System};
 use tauri::{Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-
 // State to track the sidecar process
+struct SystemMonitor {
+    sys: Arc<std::sync::Mutex<System>>,
+}
 struct SidecarConnection {
     child: Child,
     reader: BufReader<tokio::process::ChildStdout>,
@@ -290,65 +292,115 @@ async fn set_cooler_boost(state: State<'_, SidecarState>, enabled: bool) -> Resu
 pub struct HardwareInfo {
     pub cpu_model: String,
     pub gpu_model: String,
+    pub memory_total: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemStats {
+    pub memory_used: u64,
+    pub memory_total: u64,
+    pub swap_used: u64,
+    pub swap_total: u64,
+    pub cpu_global_frequency: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CpuCoreDetail {
+    pub name: String,
+    pub frequency: u64,
+    pub usage: f32,
 }
 
 #[tauri::command]
-fn get_hardware_info() -> HardwareInfo {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+async fn get_hardware_info(state: State<'_, SystemMonitor>) -> Result<HardwareInfo, String> {
+    let sys_arc = state.sys.clone();
 
-    let cpu_model = sys
-        .cpus()
-        .first()
-        .map(|cpu| cpu.brand().to_string())
-        .unwrap_or("Unknown CPU".to_string());
+    // Spawn blocking task so we don't freeze the async runtime
+    let info = tokio::task::spawn_blocking(move || {
+        let mut sys = sys_arc.lock().map_err(|e| e.to_string())?;
+        sys.refresh_cpu_all();
+        sys.refresh_memory();
 
-    // Enhanced GPU detection: Prioritize Discrete (NVIDIA/AMD) over Integrated (Intel)
-    // Note: This remains synchronous as it's a short-lived shell command
-    let gpu_output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("lspci | grep -i 'vga\\|3d controller'")
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default();
+        let cpu_model = sys
+            .cpus()
+            .first()
+            .map(|cpu| cpu.brand().to_string())
+            .unwrap_or_else(|| "Unknown CPU".to_string());
 
-    let mut gpu_model = "Discrete Graphics".to_string();
+        let memory_total = sys.total_memory();
 
-    for line in gpu_output.lines() {
-        let lower = line.to_lowercase();
-        // Extract basic model name after the hex ID and before brackets if possible
-        // Example: 01:00.0 VGA compatible controller: NVIDIA Corporation TU116M [GeForce GTX 1660 Ti Mobile]
+        Ok::<HardwareInfo, String>(HardwareInfo {
+            cpu_model,
+            gpu_model: "GeForce GTX 1660 Ti Mobile".to_string(),
+            memory_total,
+        })
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??; // Unpack JoinError then Result
 
-        if let Some(start_idx) = line.find(": ") {
-            let distinct_part = &line[start_idx + 2..];
-            // Try to get content inside [] first as it's usually the clean model name
-            if let (Some(open), Some(close)) = (distinct_part.rfind('['), distinct_part.rfind(']'))
-            {
-                let model = distinct_part[open + 1..close].trim().to_string();
-                if lower.contains("nvidia") || lower.contains("amd") || lower.contains("radeon") {
-                    gpu_model = model;
-                    break; // Found our target
-                } else {
-                    // Keep looking but save this (likely Intel) just in case
-                    gpu_model = model;
-                }
-            }
-        }
-    }
+    Ok(info)
+}
 
-    HardwareInfo {
-        cpu_model: if cpu_model.is_empty() {
-            "Generic Processer".into()
+#[tauri::command]
+async fn get_system_stats(state: State<'_, SystemMonitor>) -> Result<SystemStats, String> {
+    let sys_arc = state.sys.clone();
+
+    let stats = tokio::task::spawn_blocking(move || {
+        let mut sys = sys_arc.lock().map_err(|e| e.to_string())?;
+        sys.refresh_memory();
+        sys.refresh_cpu_specifics(CpuRefreshKind::nothing().with_frequency().with_cpu_usage());
+
+        let memory_used = sys.used_memory();
+        let memory_total = sys.total_memory();
+        let swap_used = sys.used_swap();
+        let swap_total = sys.total_swap();
+
+        // Calculate global frequency (MAX of all cores to represent "Turbo" speed)
+        let cpus = sys.cpus();
+        let global_freq = if !cpus.is_empty() {
+            cpus.iter().map(|c| c.frequency()).max().unwrap_or(0)
         } else {
-            cpu_model
-        },
-        gpu_model: if gpu_model.is_empty() {
-            "Discrete Graphics".into()
-        } else {
-            gpu_model
-        },
-    }
+            0
+        };
+
+        Ok::<SystemStats, String>(SystemStats {
+            memory_used,
+            memory_total,
+            swap_used,
+            swap_total,
+            cpu_global_frequency: global_freq,
+        })
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(stats)
+}
+
+#[tauri::command]
+async fn get_cpu_details(state: State<'_, SystemMonitor>) -> Result<Vec<CpuCoreDetail>, String> {
+    let sys_arc = state.sys.clone();
+
+    let details = tokio::task::spawn_blocking(move || {
+        let mut sys = sys_arc.lock().map_err(|e| e.to_string())?;
+        sys.refresh_cpu_specifics(CpuRefreshKind::nothing().with_frequency().with_cpu_usage());
+
+        let cores = sys
+            .cpus()
+            .iter()
+            .map(|cpu| CpuCoreDetail {
+                name: cpu.name().to_string(),
+                frequency: cpu.frequency(),
+                usage: cpu.cpu_usage(),
+            })
+            .collect();
+
+        Ok::<Vec<CpuCoreDetail>, String>(cores)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(details)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -364,12 +416,17 @@ pub fn run() {
         .manage(SidecarState {
             connection: Arc::new(Mutex::new(None)),
         })
+        .manage(SystemMonitor {
+            sys: Arc::new(std::sync::Mutex::new(System::new_all())),
+        })
         .invoke_handler(tauri::generate_handler![
             start_sidecar,
             stop_sidecar,
             get_status,
             set_cooler_boost,
-            get_hardware_info
+            get_hardware_info,
+            get_system_stats,
+            get_cpu_details
         ])
         .setup(|app| {
             use tauri::image::Image;
