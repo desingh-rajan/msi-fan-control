@@ -8,20 +8,6 @@
       "model": "github-copilot/claude-opus-4.5",
       "small_model": "github-copilot/gpt-5.1-codex"
     },
-    "plan-free": {
-      "description": "Plan mode using free GPT-4.1 model",
-      "mode": "primary",
-      "model": "github-copilot/gpt-4.1",
-      "small_model": "github-copilot/gpt-5-mini",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "task": {
-          "*": "deny",
-          "explore": "allow"
-        }
-      }
-    },
     "plan-sonnet": {
       "description": "Plan mode using Claude Sonnet 4.5",
       "mode": "primary",
@@ -57,12 +43,6 @@
     "code": {
       "model": "github-copilot/claude-opus-4.5",
       "small_model": "github-copilot/claude-sonnet-4.5"
-    },
-    "code-free": {
-      "description": "Code mode using free Grok Code Fast 1 model",
-      "mode": "primary",
-      "model": "github-copilot/grok-code-fast-1",
-      "small_model": "github-copilot/gpt-5-mini"
     },
     "code-haiku-4.5": {
       "description": "Code mode using Claude Haiku 4.5",
