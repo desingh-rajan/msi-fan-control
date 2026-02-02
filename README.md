@@ -105,6 +105,13 @@ echo "ec_sys" | sudo tee /etc/modules-load.d/ec_sys.conf
 echo "options ec_sys write_support=1" | sudo tee /etc/modprobe.d/ec_sys.conf
 ```
 
+### Low Performance / Stutter on Ubuntu 22.04
+Users on Ubuntu 22.04 with NVIDIA graphics might experience UI stutter or low frame rates due to a known issue with older WebKit versions and hardware compositing.
+
+**Auto-Fix:**
+This application automatically detects Ubuntu 22.04 at startup and applies the recommended fix (`WEBKIT_DISABLE_COMPOSITING_MODE=1`) for that session. No manual action is required.
+
+
 ## Development
 
 ### Requirements
