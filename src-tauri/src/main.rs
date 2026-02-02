@@ -8,6 +8,17 @@ fn main() {
     // Check if we are on Linux
     #[cfg(target_os = "linux")]
     {
+        // Optimization: Attempt to uncap FPS by disabling VSync on supported drivers
+        // 1. Standard GTK debug flag
+        env::set_var("GTK_DEBUG", "no-vsync");
+
+        // 2. MESA drivers (Intel/AMD)
+        env::set_var("vblank_mode", "0");
+
+        // 3. NVIDIA drivers
+        env::set_var("__GL_SYNC_TO_VBLANK", "0");
+        env::set_var("__GL_YIELD", "USLEEP");
+
         // Read the OS release info
         if let Ok(os_release) = fs::read_to_string("/etc/os-release") {
             // If we detect Ubuntu 22.04, apply the performance fix
