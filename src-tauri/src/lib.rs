@@ -28,6 +28,7 @@ pub struct FanStatus {
     pub fan1_rpm: u32,
     pub fan2_rpm: u32,
     pub cooler_boost: bool,
+    pub fan_mode: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,6 +41,7 @@ enum SidecarResponse {
         fan1_rpm: u32,
         fan2_rpm: u32,
         cooler_boost: bool,
+        fan_mode: String,
     },
     #[serde(rename = "ok")]
     Ok { message: String },
@@ -158,12 +160,14 @@ async fn start_sidecar(state: State<'_, SidecarState>) -> Result<FanStatus, Stri
                     fan1_rpm,
                     fan2_rpm,
                     cooler_boost,
+                    fan_mode,
                 } => Ok(FanStatus {
                     cpu_temp,
                     gpu_temp,
                     fan1_rpm,
                     fan2_rpm,
                     cooler_boost,
+                    fan_mode,
                 }),
                 SidecarResponse::Error { message } => Err(message),
                 _ => Err("Unexpected initial response".to_string()),
@@ -228,12 +232,14 @@ async fn get_status(state: State<'_, SidecarState>) -> Result<FanStatus, String>
                 fan1_rpm,
                 fan2_rpm,
                 cooler_boost,
+                fan_mode,
             } => Ok(FanStatus {
                 cpu_temp,
                 gpu_temp,
                 fan1_rpm,
                 fan2_rpm,
                 cooler_boost,
+                fan_mode,
             }),
             SidecarResponse::Error { message } => Err(message),
             _ => Err("Unexpected response".to_string()),
@@ -263,6 +269,71 @@ async fn set_cooler_boost(state: State<'_, SidecarState>, enabled: bool) -> Resu
         r#"{{"cmd":"set_cooler_boost","data":{{"enabled":{}}}}}"#,
         enabled
     );
+
+    let request_future = async {
+        send_command(&mut conn.child, &cmd).await?;
+        read_response(&mut conn.reader).await
+    };
+
+    match tokio::time::timeout(Duration::from_secs(3), request_future).await {
+        Ok(Ok(response)) => match response {
+            SidecarResponse::Ok { message } => Ok(message),
+            SidecarResponse::Error { message } => Err(message),
+            _ => Err("Unexpected response".to_string()),
+        },
+        Ok(Err(e)) => {
+            let _ = conn.child.kill().await;
+            *guard = None;
+            Err(format!("Communication error: {}", e))
+        }
+        Err(_) => {
+            let _ = conn.child.kill().await;
+            *guard = None;
+            Err("Command timeout".to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn set_fan_speed(state: State<'_, SidecarState>, percent: u8) -> Result<String, String> {
+    let mut guard = state.connection.lock().await;
+    let conn = guard.as_mut().ok_or("Sidecar not running")?;
+
+    let cmd = format!(
+        r#"{{"cmd":"set_fan_speed","data":{{"percent":{}}}}}"#,
+        percent
+    );
+
+    let request_future = async {
+        send_command(&mut conn.child, &cmd).await?;
+        read_response(&mut conn.reader).await
+    };
+
+    match tokio::time::timeout(Duration::from_secs(3), request_future).await {
+        Ok(Ok(response)) => match response {
+            SidecarResponse::Ok { message } => Ok(message),
+            SidecarResponse::Error { message } => Err(message),
+            _ => Err("Unexpected response".to_string()),
+        },
+        Ok(Err(e)) => {
+            let _ = conn.child.kill().await;
+            *guard = None;
+            Err(format!("Communication error: {}", e))
+        }
+        Err(_) => {
+            let _ = conn.child.kill().await;
+            *guard = None;
+            Err("Command timeout".to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn set_fan_mode(state: State<'_, SidecarState>, mode: String) -> Result<String, String> {
+    let mut guard = state.connection.lock().await;
+    let conn = guard.as_mut().ok_or("Sidecar not running")?;
+
+    let cmd = format!(r#"{{"cmd":"set_fan_mode","data":{{"mode":"{}"}}}}"#, mode);
 
     let request_future = async {
         send_command(&mut conn.child, &cmd).await?;
@@ -424,6 +495,8 @@ pub fn run() {
             stop_sidecar,
             get_status,
             set_cooler_boost,
+            set_fan_speed,
+            set_fan_mode,
             get_hardware_info,
             get_system_stats,
             get_cpu_details

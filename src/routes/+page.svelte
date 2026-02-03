@@ -12,6 +12,7 @@
     fan1_rpm: number;
     fan2_rpm: number;
     cooler_boost: boolean;
+    fan_mode: string;
   }
 
   interface HardwareInfo {
@@ -45,6 +46,7 @@
   // pollTimer is defined below with startPolling
   let initialLoading = true;
   let appVersion = "";
+  let silentBoost = false;
 
   async function connect() {
     try {
@@ -169,6 +171,16 @@
 
     try {
       await invoke("set_cooler_boost", { enabled: newState });
+
+      // If turning OFF Cooler Boost, restore Silent Boost (70% speed)
+      if (!newState) {
+        await invoke("set_fan_speed", { percent: 70 });
+        silentBoost = true;
+      } else {
+        // Cooler Boost is ON, so Silent Boost is implicitly OFF
+        silentBoost = false;
+      }
+
       // Immediately refresh status
       status = await invoke<FanStatus>("get_status");
     } catch (err) {
@@ -176,6 +188,32 @@
       checkbox.checked = !newState;
     } finally {
       localStorage.setItem("cooler_boost", String(newState));
+    }
+  }
+
+  async function toggleSilentBoost(e: Event) {
+    const checkbox = e.target as HTMLInputElement;
+    const newState = checkbox.checked;
+
+    try {
+      if (newState) {
+        // Turn ON Silent Boost: set 70% speed, turn OFF Cooler Boost if active
+        if (status?.cooler_boost) {
+          await invoke("set_cooler_boost", { enabled: false });
+        }
+        await invoke("set_fan_speed", { percent: 70 });
+        silentBoost = true;
+      } else {
+        // Turn OFF Silent Boost: restore Auto mode (both modes OFF)
+        await invoke("set_fan_mode", { mode: "auto" });
+        silentBoost = false;
+      }
+
+      // Immediately refresh status
+      status = await invoke<FanStatus>("get_status");
+    } catch (err) {
+      console.error("Failed to toggle Silent Boost:", err);
+      checkbox.checked = !newState;
     }
   }
 
@@ -243,6 +281,7 @@
     if (savedCoolerBoost === "true") {
       try {
         await invoke("set_cooler_boost", { enabled: true });
+        silentBoost = false; // Cooler Boost takes priority
       } catch (e) {
         console.error("Failed to restore cooler boost state:", e);
       }
@@ -255,6 +294,17 @@
         connect().catch(() => {}), // catch here so Promise.all doesn't fail
       ]);
       if (hwInfo) hardware = hwInfo as HardwareInfo;
+
+      // Enable Silent Boost (70% fan speed) on startup if Cooler Boost is not active
+      if (savedCoolerBoost !== "true") {
+        try {
+          await invoke("set_fan_speed", { percent: 70 });
+          silentBoost = true;
+          console.log("Silent Boost enabled on startup (70% fan speed)");
+        } catch (e) {
+          console.error("Failed to enable Silent Boost on startup:", e);
+        }
+      }
 
       // Start polling loop regardless of initial connect success
       // The poll loop handles reconnection
@@ -520,7 +570,7 @@
     <!-- Controls -->
     <div class="glass-card rounded-2xl p-6 flex flex-col justify-between mb-8">
       <div>
-        <div class="flex items-center gap-3 mb-8">
+        <div class="flex items-center gap-3 mb-6">
           <span class="material-symbols-outlined text-slate-400">tune</span>
           <span
             class="text-xs text-slate-400 font-bold uppercase tracking-wider"
@@ -528,50 +578,61 @@
           >
         </div>
 
-        <!-- Cooler Boost -->
-        <div
-          class="p-4 rounded-xl border border-white/5 bg-white/5 flex items-center justify-between"
-        >
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-red-500">bolt</span>
-            <div>
-              <div class="text-sm font-bold">Cooler Boost</div>
-              <div class="text-[10px] text-slate-500 font-semibold uppercase">
-                Maximum Speed
+        <!-- Fan Mode Cards - Side by Side -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Silent Boost -->
+          <div
+            class="p-4 rounded-xl border flex items-center justify-between transition-all duration-300 {silentBoost &&
+            !status?.cooler_boost
+              ? 'border-cyan-500/30 bg-cyan-500/10'
+              : 'border-white/5 bg-white/5'}"
+          >
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-cyan-400">air</span>
+              <div>
+                <div class="text-sm font-bold">Silent Boost</div>
+                <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                  Medium Speed
+                </div>
               </div>
             </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                class="sr-only toggle-checkbox"
+                checked={silentBoost && !status?.cooler_boost}
+                on:change={toggleSilentBoost}
+              />
+              <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
+            </label>
           </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              class="sr-only toggle-checkbox"
-              checked={status?.cooler_boost || false}
-              on:change={toggleCoolerBoost}
-            />
-            <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
-          </label>
-        </div>
 
-        <!-- Silent (Disabled) -->
-        <!--
-        <div
-          class="p-4 rounded-xl border border-white/5 flex items-center justify-between opacity-60 mt-4"
-        >
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-blue-400">eco</span>
-            <div>
-              <div class="text-sm font-bold">Silent Profile</div>
-              <div class="text-[10px] text-slate-500 font-semibold uppercase">
-                Low Acoustic
+          <!-- Cooler Boost -->
+          <div
+            class="p-4 rounded-xl border flex items-center justify-between transition-all duration-300 {status?.cooler_boost
+              ? 'border-red-500/30 bg-red-500/10'
+              : 'border-white/5 bg-white/5'}"
+          >
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-red-500">bolt</span>
+              <div>
+                <div class="text-sm font-bold">Cooler Boost</div>
+                <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                  Maximum Speed
+                </div>
               </div>
             </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                class="sr-only toggle-checkbox"
+                checked={status?.cooler_boost || false}
+                on:change={toggleCoolerBoost}
+              />
+              <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
+            </label>
           </div>
-          <label class="relative inline-flex items-center cursor-not-allowed">
-            <input type="checkbox" disabled class="sr-only" />
-            <div class="toggle-bg w-12 h-7 bg-slate-800 rounded-full"></div>
-          </label>
         </div>
-        -->
       </div>
     </div>
 

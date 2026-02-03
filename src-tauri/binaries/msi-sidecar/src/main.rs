@@ -28,6 +28,20 @@ const REG_FAN1_RPM_H_0XCD: u64 = 0xCC;
 const REG_FAN2_RPM_L: u64 = 0xCB;
 const REG_FAN2_RPM_H: u64 = 0xCA;
 
+// Fan mode control (Advanced fan control)
+const REG_FAN_MODE_0XD4: u64 = 0xD4;
+const REG_FAN_MODE_0XF4: u64 = 0xF4;
+const FAN_MODE_AUTO: u8 = 0x0D;
+const FAN_MODE_SILENT: u8 = 0x1D;
+const FAN_MODE_BASIC: u8 = 0x4D;
+const FAN_MODE_ADVANCED: u8 = 0x8D;
+
+// Fan 1 (CPU) speed curve - 7 speed points (0x72-0x78)
+const REG_FAN1_SPEED_START: u64 = 0x72;
+// Fan 2 (GPU) speed curve - 7 speed points (0x8A-0x90)
+const REG_FAN2_SPEED_START: u64 = 0x8A;
+const FAN_SPEED_POINTS: u64 = 7;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "cmd", content = "data")]
 enum Command {
@@ -35,6 +49,10 @@ enum Command {
     GetStatus,
     #[serde(rename = "set_cooler_boost")]
     SetCoolerBoost { enabled: bool },
+    #[serde(rename = "set_fan_speed")]
+    SetFanSpeed { percent: u8 },
+    #[serde(rename = "set_fan_mode")]
+    SetFanMode { mode: String },
     #[serde(rename = "exit")]
     Exit,
 }
@@ -46,6 +64,7 @@ struct Status {
     fan1_rpm: u32,
     fan2_rpm: u32,
     cooler_boost: bool,
+    fan_mode: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -147,6 +166,65 @@ fn get_fan1_rpm(buffer: &[u8]) -> u32 {
     )
 }
 
+fn detect_fan_mode_address(buffer: &[u8]) -> u64 {
+    let val_d4 = buffer.get(REG_FAN_MODE_0XD4 as usize).copied().unwrap_or(0);
+    if val_d4 == FAN_MODE_AUTO
+        || val_d4 == FAN_MODE_SILENT
+        || val_d4 == FAN_MODE_BASIC
+        || val_d4 == FAN_MODE_ADVANCED
+    {
+        return REG_FAN_MODE_0XD4;
+    }
+    REG_FAN_MODE_0XF4
+}
+
+fn get_fan_mode_string(buffer: &[u8]) -> String {
+    let fan_mode_addr = detect_fan_mode_address(buffer);
+    let mode_value = buffer.get(fan_mode_addr as usize).copied().unwrap_or(0);
+    match mode_value {
+        FAN_MODE_AUTO => "auto".to_string(),
+        FAN_MODE_SILENT => "silent".to_string(),
+        FAN_MODE_BASIC => "basic".to_string(),
+        FAN_MODE_ADVANCED => "advanced".to_string(),
+        _ => format!("unknown(0x{:02X})", mode_value),
+    }
+}
+
+fn set_fan_speed_fixed(percent: u8) -> Result<(), String> {
+    let buffer = read_ec_snapshot().map_err(|e| e.to_string())?;
+    let fan_mode_addr = detect_fan_mode_address(&buffer);
+
+    // 1. Enable Advanced mode
+    write_ec_byte(fan_mode_addr, FAN_MODE_ADVANCED).map_err(|e| e.to_string())?;
+
+    // 2. Set all 7 speed points to the same value for Fan 1 (CPU)
+    for i in 0..FAN_SPEED_POINTS {
+        write_ec_byte(REG_FAN1_SPEED_START + i, percent).map_err(|e| e.to_string())?;
+    }
+
+    // 3. Set all 7 speed points for Fan 2 (GPU)
+    for i in 0..FAN_SPEED_POINTS {
+        write_ec_byte(REG_FAN2_SPEED_START + i, percent).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn set_fan_mode(mode: &str) -> Result<(), String> {
+    let buffer = read_ec_snapshot().map_err(|e| e.to_string())?;
+    let fan_mode_addr = detect_fan_mode_address(&buffer);
+
+    let mode_value = match mode {
+        "auto" => FAN_MODE_AUTO,
+        "silent" => FAN_MODE_SILENT,
+        "basic" => FAN_MODE_BASIC,
+        "advanced" => FAN_MODE_ADVANCED,
+        _ => return Err(format!("Unknown mode: {}", mode)),
+    };
+
+    write_ec_byte(fan_mode_addr, mode_value).map_err(|e| e.to_string())
+}
+
 fn get_status() -> Result<Status, String> {
     let buffer = read_ec_snapshot().map_err(|e| format!("Failed to read EC: {}", e))?;
 
@@ -164,6 +242,7 @@ fn get_status() -> Result<Status, String> {
 
     let fan1_rpm = get_fan1_rpm(&buffer);
     let fan2_rpm = get_fan_rpm(&buffer, REG_FAN2_RPM_L as usize, REG_FAN2_RPM_H as usize);
+    let fan_mode = get_fan_mode_string(&buffer);
 
     Ok(Status {
         cpu_temp,
@@ -171,6 +250,7 @@ fn get_status() -> Result<Status, String> {
         fan1_rpm,
         fan2_rpm,
         cooler_boost,
+        fan_mode,
     })
 }
 
@@ -245,6 +325,22 @@ fn main() {
                             "Cooler Boost {}",
                             if enabled { "enabled" } else { "disabled" }
                         ),
+                    });
+                }
+                Err(e) => send_response(&Response::Error { message: e }),
+            },
+            Command::SetFanSpeed { percent } => match set_fan_speed_fixed(percent) {
+                Ok(()) => {
+                    send_response(&Response::Ok {
+                        message: format!("Fan speed set to {}%", percent),
+                    });
+                }
+                Err(e) => send_response(&Response::Error { message: e }),
+            },
+            Command::SetFanMode { mode } => match set_fan_mode(&mode) {
+                Ok(()) => {
+                    send_response(&Response::Ok {
+                        message: format!("Fan mode set to {}", mode),
                     });
                 }
                 Err(e) => send_response(&Response::Error { message: e }),
