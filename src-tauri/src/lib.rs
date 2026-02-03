@@ -501,7 +501,7 @@ async fn get_autostart_enabled() -> Result<bool, String> {
 #[tauri::command]
 async fn set_autostart_enabled(enabled: bool) -> Result<String, String> {
     let path = get_autostart_path()?;
-    
+
     if enabled {
         // Create autostart directory if it doesn't exist
         if let Some(parent) = path.parent() {

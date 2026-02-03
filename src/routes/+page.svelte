@@ -573,7 +573,9 @@
           class="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 mt-4"
         >
           <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-orange-400">rocket_launch</span>
+            <span class="material-symbols-outlined text-orange-400"
+              >rocket_launch</span
+            >
             <div>
               <div class="text-sm font-bold">Start at Login</div>
               <div class="text-[10px] text-slate-500 font-semibold uppercase">
