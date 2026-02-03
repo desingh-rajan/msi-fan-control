@@ -474,6 +474,51 @@ async fn get_cpu_details(state: State<'_, SystemMonitor>) -> Result<Vec<CpuCoreD
     Ok(details)
 }
 
+const AUTOSTART_DESKTOP_ENTRY: &str = r#"[Desktop Entry]
+Type=Application
+Name=MSI Fan Control
+Comment=Fan control for MSI laptops
+Exec=msi-fan-control
+Icon=msi-fan-control
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+"#;
+
+fn get_autostart_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set")?;
+    let autostart_dir = std::path::PathBuf::from(home).join(".config/autostart");
+    Ok(autostart_dir.join("msi-fan-control.desktop"))
+}
+
+#[tauri::command]
+async fn get_autostart_enabled() -> Result<bool, String> {
+    let path = get_autostart_path()?;
+    Ok(path.exists())
+}
+
+#[tauri::command]
+async fn set_autostart_enabled(enabled: bool) -> Result<String, String> {
+    let path = get_autostart_path()?;
+    
+    if enabled {
+        // Create autostart directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        // Write the desktop entry
+        std::fs::write(&path, AUTOSTART_DESKTOP_ENTRY).map_err(|e| e.to_string())?;
+        Ok("Autostart enabled".to_string())
+    } else {
+        // Remove the desktop entry if it exists
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        Ok("Autostart disabled".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -499,7 +544,9 @@ pub fn run() {
             set_fan_mode,
             get_hardware_info,
             get_system_stats,
-            get_cpu_details
+            get_cpu_details,
+            get_autostart_enabled,
+            set_autostart_enabled
         ])
         .setup(|app| {
             use tauri::image::Image;

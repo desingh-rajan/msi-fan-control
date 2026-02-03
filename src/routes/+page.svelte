@@ -47,6 +47,7 @@
   let initialLoading = true;
   let appVersion = "";
   let silentBoost = false;
+  let autostart = false;
 
   async function connect() {
     try {
@@ -316,6 +317,13 @@
     loading = false;
     appVersion = await getVersion();
 
+    // Load autostart state
+    try {
+      autostart = await invoke<boolean>("get_autostart_enabled");
+    } catch (e) {
+      console.error("Failed to get autostart state:", e);
+    }
+
     // Hide initial loading screen after everything is ready
     setTimeout(() => {
       initialLoading = false;
@@ -366,6 +374,19 @@
       cancelAnimationFrame(fpsLoopId);
     }
     localStorage.setItem("show_fps", String(showFps));
+  }
+
+  async function toggleAutostart(e: Event) {
+    const checkbox = e.target as HTMLInputElement;
+    const newState = checkbox.checked;
+
+    try {
+      await invoke("set_autostart_enabled", { enabled: newState });
+      autostart = newState;
+    } catch (err) {
+      console.error("Failed to toggle autostart:", err);
+      checkbox.checked = !newState;
+    }
   }
 </script>
 
@@ -542,6 +563,30 @@
               class="sr-only toggle-checkbox"
               checked={showFps}
               on:change={toggleFps}
+            />
+            <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
+          </label>
+        </div>
+
+        <!-- Autostart Toggle -->
+        <div
+          class="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 mt-4"
+        >
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-orange-400">rocket_launch</span>
+            <div>
+              <div class="text-sm font-bold">Start at Login</div>
+              <div class="text-[10px] text-slate-500 font-semibold uppercase">
+                Launch on System Startup
+              </div>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              class="sr-only toggle-checkbox"
+              checked={autostart}
+              on:change={toggleAutostart}
             />
             <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
           </label>
