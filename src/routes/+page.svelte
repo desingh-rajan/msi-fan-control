@@ -2,66 +2,51 @@
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getVersion } from "@tauri-apps/api/app";
+  import type { FanStatus, HardwareInfo, SystemStats, CpuCoreDetail } from "$lib/types";
+  import { formatGb } from "$lib/utils";
 
   import logo from "$lib/assets/logo.png";
   import "./page.css";
 
-  interface FanStatus {
-    cpu_temp: number;
-    gpu_temp: number;
-    fan1_rpm: number;
-    fan2_rpm: number;
-    cooler_boost: boolean;
-    fan_mode: string;
-  }
+  // --- Reactive state ---
+  let status = $state<FanStatus | null>(null);
+  let hardware = $state<HardwareInfo | null>(null);
+  let systemStats = $state<SystemStats | null>(null);
+  let cpuDetails = $state<CpuCoreDetail[]>([]);
+  let isCpuExpanded = $state(false);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+  let initialLoading = $state(true);
+  let appVersion = $state("");
+  let silentBoost = $state(false);
+  let autostart = $state(false);
+  let showSettings = $state(false);
+  let theme = $state("dark");
+  let showFps = $state(false);
+  let fps = $state(0);
 
-  interface HardwareInfo {
-    cpu_model: string;
-    gpu_model: string;
-    memory_total: number;
-  }
+  // Derived: box-shadow only recomputes when cooler_boost actually changes
+  const coolerBoostShadow = $derived(
+    status?.cooler_boost ? "inset 0 0 100px rgba(255, 77, 77, 0.05)" : "none"
+  );
 
-  interface SystemStats {
-    memory_used: number;
-    memory_total: number;
-    swap_used: number;
-    swap_total: number;
-    cpu_global_frequency: number;
-  }
-
-  interface CpuCoreDetail {
-    name: string;
-    frequency: number;
-    usage: number;
-  }
-
-  let status: FanStatus | null = null;
-  let hardware: HardwareInfo | null = null;
-  let systemStats: SystemStats | null = null;
-  let cpuDetails: CpuCoreDetail[] = [];
-  let isCpuExpanded = false;
-
-  let loading = true;
-  let error: string | null = null;
-  // pollTimer is defined below with startPolling
-  let initialLoading = true;
-  let appVersion = "";
-  let silentBoost = false;
-  let autostart = false;
-
+  // --- Connection ---
   async function connect() {
     try {
       status = await invoke<FanStatus>("start_sidecar");
     } catch (e) {
       error = String(e);
       console.error("Connection failed:", e);
-      throw e; // Propagate so caller feels the pain
+      throw e;
     }
   }
 
-  let pollTimer: any;
+  // --- Polling ---
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let isPolling = false;
   let lastPollTime = 0;
+  let statsTick = 0;
+  const STATS_INTERVAL = 3; // system stats polled every 3 fan ticks (~6 s)
 
   async function startPolling() {
     if (isPolling) return;
@@ -70,22 +55,17 @@
     const poll = async () => {
       if (!isPolling) return;
 
-      // 1. Fetch Fan Status (Critical - triggers reconnect logic)
+      // 1. Fan status — every tick (critical)
       try {
         status = await invoke<FanStatus>("get_status");
-
-        // Reset connection error if successful
         if (
           error &&
-          (error.includes("Sidecar not running") ||
-            error.includes("Broken pipe"))
+          (error.includes("Sidecar not running") || error.includes("Broken pipe"))
         ) {
           error = null;
         }
       } catch (e) {
         console.warn("Fan Poll error:", e);
-        // If error looks like calling sidecar failed, try to reconnect
-        // "Sidecar not running" is our explicit error from lib.rs
         if (
           String(e).includes("Sidecar not running") ||
           String(e).includes("Broken pipe") ||
@@ -103,23 +83,21 @@
         }
       }
 
-      // 2. Fetch System Stats (Non-Critical - does not trigger reconnect)
-      try {
-        systemStats = await invoke<SystemStats>("get_system_stats");
-
-        // Fetch CPU details only if expanded (on-demand)
-        if (isCpuExpanded) {
-          cpuDetails = await invoke<CpuCoreDetail[]>("get_cpu_details");
+      // 2. System stats — every STATS_INTERVAL ticks (non-critical)
+      statsTick++;
+      if (statsTick >= STATS_INTERVAL) {
+        statsTick = 0;
+        try {
+          systemStats = await invoke<SystemStats>("get_system_stats");
+          if (isCpuExpanded) {
+            cpuDetails = await invoke<CpuCoreDetail[]>("get_cpu_details");
+          }
+        } catch (e) {
+          console.warn("System Stats Poll warning:", e);
         }
-      } catch (e) {
-        // Just log, don't break the app or try to reconnect
-        console.warn("System Stats Poll warning:", e);
       }
 
       lastPollTime = Date.now();
-
-      // Schedule next poll - recursive approach ensures no overlap
-      // and waits for current poll to finish before scheduling next
       if (isPolling) {
         pollTimer = setTimeout(poll, 2000);
       }
@@ -136,24 +114,15 @@
   async function refresh() {
     loading = true;
     error = null;
-
-    // Stop polling first to clear any hung state
     stopPolling();
 
     try {
-      // Try to just get status first. If this works, we don't need to re-authenticate (sudo)
       console.log("Refresh: checking status...");
       status = await invoke<FanStatus>("get_status");
-
-      // If we got here, connection is fine. Just restart polling.
       console.log("Refresh: Connection healthy, resuming polling.");
       startPolling();
     } catch (e) {
-      console.warn(
-        "Refresh: Connection check failed, forcing reconnect. Error:",
-        e,
-      );
-      // Only now do we force a full reconnect (which triggers password)
+      console.warn("Refresh: Connection check failed, forcing reconnect. Error:", e);
       try {
         await connect();
         startPolling();
@@ -166,23 +135,18 @@
     }
   }
 
+  // --- Controls ---
   async function toggleCoolerBoost(e: Event) {
     const checkbox = e.target as HTMLInputElement;
     const newState = checkbox.checked;
-
     try {
       await invoke("set_cooler_boost", { enabled: newState });
-
-      // If turning OFF Cooler Boost, restore Silent Boost (70% speed)
       if (!newState) {
         await invoke("set_fan_speed", { percent: 70 });
         silentBoost = true;
       } else {
-        // Cooler Boost is ON, so Silent Boost is implicitly OFF
         silentBoost = false;
       }
-
-      // Immediately refresh status
       status = await invoke<FanStatus>("get_status");
     } catch (err) {
       console.error("Failed to toggle:", err);
@@ -195,22 +159,17 @@
   async function toggleSilentBoost(e: Event) {
     const checkbox = e.target as HTMLInputElement;
     const newState = checkbox.checked;
-
     try {
       if (newState) {
-        // Turn ON Silent Boost: set 70% speed, turn OFF Cooler Boost if active
         if (status?.cooler_boost) {
           await invoke("set_cooler_boost", { enabled: false });
         }
         await invoke("set_fan_speed", { percent: 70 });
         silentBoost = true;
       } else {
-        // Turn OFF Silent Boost: restore Auto mode (both modes OFF)
         await invoke("set_fan_mode", { mode: "auto" });
         silentBoost = false;
       }
-
-      // Immediately refresh status
       status = await invoke<FanStatus>("get_status");
     } catch (err) {
       console.error("Failed to toggle Silent Boost:", err);
@@ -218,10 +177,7 @@
     }
   }
 
-  /* Theme Settings Logic */
-  let showSettings = false;
-  let theme = "dark";
-
+  // --- Theme ---
   function toggleSettings() {
     showSettings = !showSettings;
   }
@@ -236,20 +192,17 @@
     localStorage.setItem("theme", theme);
   }
 
-  // Handle visibility change (sleep/wake, window focus)
+  // --- Visibility: pause polling when hidden, resume when visible ---
   function handleVisibilityChange() {
-    if (!document.hidden) {
-      // App became visible again
+    if (document.hidden) {
+      stopPolling();
+    } else {
       console.log("App visible again, checking poll health");
-
-      // Check if polling is stale (no update in last 10 seconds)
       const timeSinceLastPoll = Date.now() - lastPollTime;
       const isStale = timeSinceLastPoll > 10000;
-
       if (isStale || !isPolling) {
         console.log("Polling appears stale or stopped, forcing reconnect");
         stopPolling();
-        // Force reconnect after visibility change if polling is stale
         connect()
           .then(() => {
             console.log("Reconnected successfully on visibility change");
@@ -257,18 +210,16 @@
           })
           .catch((e) => {
             console.error("Failed to reconnect on visibility change:", e);
-            // Try to start polling anyway - it will attempt reconnect
             startPolling();
           });
       } else {
-        // Polling is healthy, just ensure it's running
         startPolling();
       }
     }
   }
 
+  // --- Lifecycle ---
   onMount(async () => {
-    // Load saved theme
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme) {
       theme = savedTheme;
@@ -277,26 +228,23 @@
       }
     }
 
-    // Load saved cooler boost state and apply it
     const savedCoolerBoost = localStorage.getItem("cooler_boost");
     if (savedCoolerBoost === "true") {
       try {
         await invoke("set_cooler_boost", { enabled: true });
-        silentBoost = false; // Cooler Boost takes priority
+        silentBoost = false;
       } catch (e) {
         console.error("Failed to restore cooler boost state:", e);
       }
     }
 
     try {
-      // Parallel fetch
-      const [hwInfo, _] = await Promise.all([
-        invoke<HardwareInfo>("get_hardware_info").catch((e) => null),
-        connect().catch(() => {}), // catch here so Promise.all doesn't fail
+      const [hwInfo] = await Promise.all([
+        invoke<HardwareInfo>("get_hardware_info").catch(() => null),
+        connect().catch(() => {}),
       ]);
       if (hwInfo) hardware = hwInfo as HardwareInfo;
 
-      // Enable Silent Boost (70% fan speed) on startup if Cooler Boost is not active
       if (savedCoolerBoost !== "true") {
         try {
           await invoke("set_fan_speed", { percent: 70 });
@@ -307,8 +255,6 @@
         }
       }
 
-      // Start polling loop regardless of initial connect success
-      // The poll loop handles reconnection
       startPolling();
     } catch (e) {
       console.error(e);
@@ -317,19 +263,22 @@
     loading = false;
     appVersion = await getVersion();
 
-    // Load autostart state
     try {
       autostart = await invoke<boolean>("get_autostart_enabled");
     } catch (e) {
       console.error("Failed to get autostart state:", e);
     }
 
-    // Hide initial loading screen after everything is ready
     setTimeout(() => {
       initialLoading = false;
     }, 500);
 
-    // Set up visibility change listener
+    // Restore FPS overlay preference
+    if (localStorage.getItem("show_fps") === "true") {
+      showFps = true;
+      startFpsLoop();
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleVisibilityChange);
   });
@@ -339,9 +288,8 @@
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("focus", handleVisibilityChange);
   });
-  /* FPS Counter Logic */
-  let showFps = false;
-  let fps = 0;
+
+  // --- FPS Counter ---
   let fpsLoopId: number;
 
   function startFpsLoop() {
@@ -351,13 +299,11 @@
     function loop(now: number) {
       frames++;
       const elapsed = now - lastTime;
-
       if (elapsed >= 1000) {
         fps = Math.round((frames * 1000) / elapsed);
         frames = 0;
         lastTime = now;
       }
-
       if (showFps) {
         fpsLoopId = requestAnimationFrame(loop);
       }
@@ -379,7 +325,6 @@
   async function toggleAutostart(e: Event) {
     const checkbox = e.target as HTMLInputElement;
     const newState = checkbox.checked;
-
     try {
       await invoke("set_autostart_enabled", { enabled: newState });
       autostart = newState;
@@ -394,9 +339,7 @@
   id="app-container"
   data-theme={theme}
   class="h-screen flex flex-col transition-colors duration-500"
-  style:box-shadow={status?.cooler_boost
-    ? "inset 0 0 100px rgba(255, 77, 77, 0.05)"
-    : "none"}
+  style:box-shadow={coolerBoostShadow}
 >
   {#if initialLoading}
     <div
@@ -464,7 +407,7 @@
       </div>
       <button
         class="p-2 hover:bg-white/5 rounded-full transition-colors"
-        on:click={refresh}
+        onclick={refresh}
         title="Refresh Connection"
       >
         <span
@@ -475,11 +418,10 @@
       </button>
       <button
         class="p-2 hover:bg-white/5 rounded-full transition-colors"
-        on:click={toggleSettings}
+        onclick={toggleSettings}
+        title="Settings"
       >
-        <span class="material-symbols-outlined text-slate-400 text-xl"
-          >settings</span
-        >
+        <span class="material-symbols-outlined text-slate-400 text-xl">settings</span>
       </button>
       {#if showFps}
         <div
@@ -495,8 +437,8 @@
   {#if showSettings}
     <div
       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-      on:click|self={toggleSettings}
-      on:keydown|self={(e) => e.key === "Escape" && toggleSettings()}
+      onclick={(e) => e.target === e.currentTarget && toggleSettings()}
+      onkeydown={(e) => e.target === e.currentTarget && e.key === "Escape" && toggleSettings()}
       role="button"
       tabindex="0"
     >
@@ -506,8 +448,7 @@
         <div class="flex items-center justify-between mb-8">
           <h2 class="text-xl font-bold">Settings</h2>
           <button
-            on:click={toggleSettings}
-            class="p-1 rounded-full hover:bg-white/5 transition-colors"
+            onclick={toggleSettings}
           >
             <span class="material-symbols-outlined">close</span>
           </button>
@@ -538,7 +479,7 @@
               type="checkbox"
               class="sr-only toggle-checkbox"
               checked={theme === "light"}
-              on:change={toggleTheme}
+              onchange={toggleTheme}
             />
             <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
           </label>
@@ -562,7 +503,7 @@
               type="checkbox"
               class="sr-only toggle-checkbox"
               checked={showFps}
-              on:change={toggleFps}
+              onchange={toggleFps}
             />
             <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
           </label>
@@ -588,7 +529,7 @@
               type="checkbox"
               class="sr-only toggle-checkbox"
               checked={autostart}
-              on:change={toggleAutostart}
+              onchange={toggleAutostart}
             />
             <div class="toggle-bg w-12 h-7 toggle-track rounded-full"></div>
           </label>
@@ -648,7 +589,7 @@
                 type="checkbox"
                 class="sr-only toggle-checkbox"
                 checked={silentBoost && !status?.cooler_boost}
-                on:change={toggleSilentBoost}
+                onchange={toggleSilentBoost}
               />
               <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
             </label>
@@ -674,7 +615,7 @@
                 type="checkbox"
                 class="sr-only toggle-checkbox"
                 checked={status?.cooler_boost || false}
-                on:change={toggleCoolerBoost}
+                onchange={toggleCoolerBoost}
               />
               <div class="toggle-bg w-12 h-7 bg-slate-700 rounded-full"></div>
             </label>
@@ -801,7 +742,7 @@
           </div>
           <button
             class="p-1 rounded-full hover:bg-white/10 transition-colors"
-            on:click={() => (isCpuExpanded = !isCpuExpanded)}
+            onclick={() => (isCpuExpanded = !isCpuExpanded)}
             title={isCpuExpanded ? "Collapse" : "Expand for per-core details"}
           >
             <span
@@ -885,15 +826,11 @@
         <div class="flex flex-col">
           <div class="flex justify-between items-end mb-2">
             <span class="text-2xl font-extrabold tracking-tighter">
-              {systemStats
-                ? (systemStats.memory_used / 1024 / 1024 / 1024).toFixed(1)
-                : "--"}
+              {systemStats ? formatGb(systemStats.memory_used) : "--"}
             </span>
             <div class="text-right">
               <span class="text-xs text-slate-400 font-bold">
-                / {hardware
-                  ? (hardware.memory_total / 1024 / 1024 / 1024).toFixed(1)
-                  : "--"} GB
+                / {hardware ? formatGb(hardware.memory_total) : "--"} GB
               </span>
             </div>
           </div>
@@ -914,12 +851,7 @@
             >
               <span>Used: {percent.toFixed(0)}%</span>
               <span
-                >Free: {(
-                  (hardware.memory_total - systemStats.memory_used) /
-                  1024 /
-                  1024 /
-                  1024
-                ).toFixed(1)} GB</span
+                >Free: {formatGb(hardware.memory_total - systemStats.memory_used)} GB</span
               >
             </div>
 
@@ -934,12 +866,7 @@
                 >Swap</span
               >
               <span class="text-[10px] text-slate-400 font-mono"
-                >{(systemStats.swap_used / 1024 / 1024 / 1024).toFixed(1)} / {(
-                  systemStats.swap_total /
-                  1024 /
-                  1024 /
-                  1024
-                ).toFixed(1)} GB</span
+                >{formatGb(systemStats.swap_used)} / {formatGb(systemStats.swap_total)} GB</span
               >
             </div>
             <div class="w-full h-1 bg-black/40 rounded-full overflow-hidden">
