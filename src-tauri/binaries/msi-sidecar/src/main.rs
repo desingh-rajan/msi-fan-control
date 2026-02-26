@@ -97,7 +97,7 @@ fn setup_ec_module() {
     // /etc/modules-load.d/ec_sys.conf
     let load_conf = Path::new("/etc/modules-load.d/ec_sys.conf");
     if !load_conf.exists() {
-        if let Ok(mut f) = OpenOptions::new().create(true).write(true).open(load_conf) {
+        if let Ok(mut f) = OpenOptions::new().create(true).truncate(true).write(true).open(load_conf) {
             let _ = writeln!(f, "ec_sys");
             eprintln!("Created persistence: {:?}", load_conf);
         }
@@ -108,6 +108,7 @@ fn setup_ec_module() {
     if !modprobe_conf.exists() {
         if let Ok(mut f) = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(modprobe_conf)
         {
